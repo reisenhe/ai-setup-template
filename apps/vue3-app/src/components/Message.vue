@@ -32,7 +32,6 @@ const renderedContent = computed(() => {
 .message {
   display: flex;
   margin-bottom: 16px;
-  max-width: 80%;
 }
 
 .user-message {
@@ -68,9 +67,6 @@ const renderedContent = computed(() => {
 }
 
 /* 确保 Markdown 内容正确显示 */
-.message-content :deep(p) {
-  margin: 0 0 8px 0;
-}
 
 .message-content :deep(ul),
 .message-content :deep(ol) {
