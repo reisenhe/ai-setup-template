@@ -56,8 +56,8 @@ const inputMessage = ref('');
 const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 
-// 模拟 SSE 接口地址，实际项目中需要替换为真实的后端接口
-const SSE_URL = 'http://localhost:3000/api/sse/stream';
+// SSE 接口地址，通过 vite proxy 代理到后端
+const SSE_URL = '/api/chat/stream';
 
 function scrollToBottom() {
   nextTick(() => {
@@ -82,56 +82,56 @@ function sendMessage() {
 
   scrollToBottom();
 
-  // 模拟 AI 回复
-  // 实际项目中，这里应该调用 createEventStream 与后端进行流式通信
-  setTimeout(() => {
-    // 模拟流式回复
-    let aiResponse = '这是一个 AI 生成的回复。';
-    
-    // 添加 AI 回复
-    messages.value.push({
-      content: aiResponse,
-      role: MessageRoleEnum.ASSISTANT
-    });
-    
-    isLoading.value = false;
-    scrollToBottom();
-  }, 1000);
+  // 添加 AI 回复占位
+  const aiMessageIndex = messages.value.length;
+  messages.value.push({
+    content: '',
+    role: MessageRoleEnum.ASSISTANT
+  });
 
-  // 实际项目中的流式通信代码
-  /*
-  const controller = createEventStream(
+  // 使用 createEventStream 与后端进行流式通信
+  createEventStream(
     SSE_URL,
-    { prompt: message },
+    { message },
     {
       onopen: async (response) => {
         if (!response.ok) {
           console.error('连接失败:', response.status);
+          messages.value[aiMessageIndex].content = '连接失败，请重试';
           isLoading.value = false;
         }
       },
       onmessage: (msg) => {
-        // 处理流式消息
-        const data = msg.data;
         try {
-          const parsedData = JSON.parse(data);
-          // 这里需要根据后端返回的数据格式进行处理
-          console.log('收到消息:', parsedData);
+          const parsedData = JSON.parse(msg.data);
+          
+          if (parsedData.type === 'chunk' && parsedData.content) {
+            // 流式追加内容
+            messages.value[aiMessageIndex].content += parsedData.content;
+            scrollToBottom();
+          } else if (parsedData.type === 'end') {
+            isLoading.value = false;
+            scrollToBottom();
+          } else if (parsedData.type === 'error') {
+            messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
+            isLoading.value = false;
+          }
         } catch (error) {
           console.error('解析消息失败:', error);
         }
       },
       onclose: () => {
-        console.log('连接关闭');
         isLoading.value = false;
       },
       onerror: (err) => {
         console.error('发生错误:', err);
+        if (!messages.value[aiMessageIndex].content) {
+          messages.value[aiMessageIndex].content = '连接出错，请重试';
+        }
         isLoading.value = false;
       }
     }
   );
-  */
 }
 
 onMounted(() => {
