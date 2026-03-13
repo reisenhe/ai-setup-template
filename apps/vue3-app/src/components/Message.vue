@@ -88,6 +88,7 @@ const renderedContent = computed(() => {
 .message-content {
   line-height: 1.6;
   font-size: 15px;
+  text-align: left;
 }
 
 /* 确保 Markdown 内容正确显示 */

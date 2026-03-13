@@ -46,6 +46,27 @@
 pnpm install
 ```
 
+## 环境配置
+
+后端服务需要配置 AI API 密钥：
+
+```bash
+# 进入后端服务目录
+cd apps/nestjs-service
+
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑 .env 文件，填入你的 API Key
+```
+
+`.env` 文件内容：
+```bash
+# DashScope API 配置（通义千问）
+# 获取 API Key: https://help.aliyun.com/zh/model-studio/get-api-key
+DASHSCOPE_API_KEY=sk-your-api-key
+```
+
 ## 启动开发环境
 
 ### 同时启动所有应用

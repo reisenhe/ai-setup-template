@@ -10,7 +10,7 @@ export class ChatAgent {
 
   constructor() {
     this.client = new OpenAI({
-      apiKey: 'sk-your-api-key', // 输入自己的 API 密钥
+      apiKey: process.env.DASHSCOPE_API_KEY,
       baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     });
     this.model = 'qwen-plus';
