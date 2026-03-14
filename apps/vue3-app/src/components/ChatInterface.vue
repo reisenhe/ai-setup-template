@@ -16,6 +16,16 @@
       </div>
     </div>
     
+    <div class="api-selector">
+      <label>接口选择：</label>
+      <select v-model="selectedApi" :disabled="isLoading">
+        <option v-for="api in apiOptions" :key="api.value" :value="api.value">
+          {{ api.label }}
+        </option>
+      </select>
+      <span class="api-hint">{{ currentApiHint }}</span>
+    </div>
+    
     <div class="chat-input">
       <textarea
         v-model="inputMessage"
@@ -35,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue';
+import { ref, nextTick, onMounted, computed } from 'vue';
 import Message from './Message.vue';
 import { MessageRoleEnum } from '../enums/message.enum';
 import { createEventStream } from '../controllers/sse.controller';
@@ -56,8 +66,31 @@ const inputMessage = ref('');
 const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 
-// SSE 接口地址，通过 vite proxy 代理到后端
-const SSE_URL = '/api/chat/stream';
+// 可用的 API 接口列表
+const apiOptions = [
+  { 
+    value: '/api/chat/stream', 
+    label: '基础聊天 (ChatOpenAI)', 
+    hint: '使用 ChatOpenAI 兼容模式，无工具调用' 
+  },
+  { 
+    value: '/api/chat/dashscope/stream', 
+    label: '基础聊天 (DashScope)', 
+    hint: '使用 ChatAlibabaTongyi 原生 SDK，无工具调用' 
+  },
+  { 
+    value: '/api/chat/tool/stream', 
+    label: '工具调用 (时间工具)', 
+    hint: '支持时间查询、日期计算等工具调用' 
+  },
+];
+
+const selectedApi = ref(apiOptions[2].value); // 默认选择工具调用接口
+
+const currentApiHint = computed(() => {
+  const api = apiOptions.find(a => a.value === selectedApi.value);
+  return api?.hint || '';
+});
 
 function scrollToBottom() {
   nextTick(() => {
@@ -91,7 +124,7 @@ function sendMessage() {
 
   // 使用 createEventStream 与后端进行流式通信
   createEventStream(
-    SSE_URL,
+    selectedApi.value,
     { message },
     {
       onopen: async (response) => {
@@ -287,5 +320,57 @@ onMounted(() => {
 
 .chat-messages::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+.api-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.api-selector label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.api-selector select {
+  padding: 8px 12px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 200px;
+}
+
+.api-selector select:hover:not(:disabled) {
+  border-color: #6366f1;
+}
+
+.api-selector select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.api-selector select:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.api-hint {
+  font-size: 12px;
+  color: #9ca3af;
+  flex: 1;
 }
 </style>
