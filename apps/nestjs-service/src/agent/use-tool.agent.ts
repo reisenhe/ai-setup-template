@@ -11,12 +11,7 @@ export class UseToolAgent {
   private llm: ChatOpenAI;
   private llmWithTools: ReturnType<ChatOpenAI['bindTools']>;
   private defaultSystemPrompt = `你是一个有帮助的 AI 助手。
-你可以使用以下时间工具来回答与时间、日期相关的问题：
-- get_current_time: 获取当前日期和时间
-- get_weekday: 查询指定日期是星期几
-- get_date_diff: 计算两个日期之间的间隔
-- add_to_date: 对日期进行加减计算
-
+你可以使用一些时间工具来回答与时间、日期相关的问题
 当用户询问时间相关问题时，请使用这些工具获取准确信息后再回答。`;
 
   constructor() {
