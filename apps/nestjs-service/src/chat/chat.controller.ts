@@ -1,8 +1,9 @@
-import { Controller, Post, Body, Sse, Query, MessageEvent } from '@nestjs/common';
+import { Controller, Post, Body, Sse, Query, MessageEvent, Delete, Param } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { ChatService } from './chat.service';
 import { OpenAIChatService } from './openai-chat.service';
 import { ChatWithToolService } from './chat-with-tool.service';
+import { MemoryChatService } from './memory-chat.service';
 
 /**
  * SSE 聊天控制器
@@ -14,6 +15,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly openAIChatService: OpenAIChatService,
     private readonly chatWithToolService: ChatWithToolService,
+    private readonly memoryChatService: MemoryChatService,
   ) {}
 
   // ==================== LangChain ChatOpenAI 接口 ====================
@@ -115,4 +117,35 @@ export class ChatController {
     this.chatWithToolService.streamChat(body.message, subject, body.systemPrompt);
     return subject.asObservable();
   }
+
+  // ==================== 记忆聊天接口 ====================
+
+  /**
+   * 记忆聊天版 SSE 流式聊天接口
+   * GET /chat/memory/stream?message=xxx&threadId=xxx
+   */
+  @Sse('memory/stream')
+  memoryStreamChat(
+    @Query('message') message: string,
+    @Query('threadId') threadId?: string,
+  ): Observable<MessageEvent> {
+    const subject = new Subject<MessageEvent>();
+    this.memoryChatService.streamChat(message, subject, threadId);
+    return subject.asObservable();
+  }
+
+  /**
+   * 记忆聊天版 POST 方式的 SSE 流式聊天接口
+   * POST /chat/memory/stream
+   */
+  @Post('memory/stream')
+  @Sse()
+  memoryStreamChatPost(
+    @Body() body: { message: string; threadId?: string; },
+  ): Observable<MessageEvent> {
+    const subject = new Subject<MessageEvent>();
+    this.memoryChatService.streamChat(body.message, subject, body.threadId);
+    return subject.asObservable();
+  }
+
 }

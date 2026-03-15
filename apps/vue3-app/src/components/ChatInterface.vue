@@ -18,8 +18,8 @@
     
     <div class="api-selector">
       <label>接口选择：</label>
-      <select v-model="selectedApi" :disabled="isLoading">
-        <option v-for="api in apiOptions" :key="api.value" :value="api.value">
+      <select v-model="selectedApiIndex" :disabled="isLoading">
+        <option v-for="(api, index) in apiOptions" :key="index" :value="index">
           {{ api.label }}
         </option>
       </select>
@@ -55,6 +55,13 @@ interface Message {
   role: MessageRoleEnum;
 }
 
+interface ApiOption {
+  value: string;
+  label: string;
+  hint: string;
+  threadId?: string;
+}
+
 const messages = ref<Message[]>([
   {
     content: '你好！我是一个 AI 助手，有什么我可以帮助你的吗？',
@@ -67,30 +74,42 @@ const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 
 // 可用的 API 接口列表
-const apiOptions = [
+const apiOptions: ApiOption[] = [
   { 
     value: '/api/chat/stream', 
     label: '基础聊天 (ChatOpenAI)', 
-    hint: '使用 ChatOpenAI 兼容模式，无工具调用' 
+    hint: '使用 ChatOpenAI 兼容模式，无工具调用',
   },
   { 
     value: '/api/chat/dashscope/stream', 
     label: '基础聊天 (DashScope)', 
-    hint: '使用 ChatAlibabaTongyi 原生 SDK，无工具调用' 
+    hint: '使用 ChatAlibabaTongyi 原生 SDK，无工具调用',
   },
   { 
     value: '/api/chat/tool/stream', 
     label: '工具调用 (时间工具)', 
-    hint: '支持时间查询、日期计算等工具调用' 
+    hint: '支持时间查询、日期计算等工具调用',
+  },
+  { 
+    value: '/api/chat/memory/stream', 
+    label: '记忆聊天 A (Thread-A)', 
+    hint: '短期记忆 - 会话 A，与 B 独立',
+    threadId: 'thread-a',
+  },
+  { 
+    value: '/api/chat/memory/stream', 
+    label: '记忆聊天 B (Thread-B)', 
+    hint: '短期记忆 - 会话 B，与 A 独立',
+    threadId: 'thread-b',
   },
 ];
 
-const selectedApi = ref(apiOptions[2].value); // 默认选择工具调用接口
+const selectedApiIndex = ref(2); // 默认选择工具调用接口
 
-const currentApiHint = computed(() => {
-  const api = apiOptions.find(a => a.value === selectedApi.value);
-  return api?.hint || '';
-});
+// 基于索引计算当前选中的 API 配置
+const currentApi = computed(() => apiOptions[selectedApiIndex.value]);
+const currentApiHint = computed(() => currentApi.value?.hint || '');
+const currentThreadId = computed(() => currentApi.value?.threadId);
 
 function scrollToBottom() {
   nextTick(() => {
@@ -122,10 +141,16 @@ function sendMessage() {
     role: MessageRoleEnum.ASSISTANT
   });
 
+  // 构建请求体，如果有 threadId 则添加
+  const requestBody: { message: string; threadId?: string } = { message };
+  if (currentThreadId.value) {
+    requestBody.threadId = currentThreadId.value;
+  }
+
   // 使用 createEventStream 与后端进行流式通信
   createEventStream(
-    selectedApi.value,
-    { message },
+    currentApi.value.value,
+    requestBody,
     {
       onopen: async (response) => {
         if (!response.ok) {
