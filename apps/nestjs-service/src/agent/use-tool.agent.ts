@@ -10,9 +10,20 @@ import { timeTools } from '../tools/time.tools';
 export class UseToolAgent {
   private llm: ChatOpenAI;
   private llmWithTools: ReturnType<ChatOpenAI['bindTools']>;
-  private defaultSystemPrompt = `你是一个有帮助的 AI 助手。
-你可以使用一些时间工具来回答与时间、日期相关的问题
-当用户询问时间相关问题时，请使用这些工具获取准确信息后再回答。`;
+  private defaultSystemPrompt = `你是一个有帮助的 AI 助手，可以使用时间工具来回答与时间、日期相关的问题。
+
+重要规则：
+1. 任何涉及相对时间的问题，必须先调用 get_current_time 获取当前精确时间作为参照基准
+2. 相对时间表述包括但不限于：
+   - 今天、明天、昨天、后天、前天
+   - 今年、去年、明年、前年、后年
+   - 这个月、上个月、下个月
+   - 本周、上周、下周
+   - 最近、刚刚、过去、之前、之后
+   - X天前、X天后、X个月前、X年前等
+3. 不要依赖训练数据假设当前日期，始终用工具获取实时信息
+4. 先确定时间基准点，再进行日期计算
+`;
 
   constructor() {
     this.llm = new ChatOpenAI({
