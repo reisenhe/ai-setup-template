@@ -125,8 +125,8 @@ const apiOptions: ApiOption[] = [
   },
   {
     value: '/api/teacher/stream',
-    label: '智能老师 (数学/英语)',
-    hint: 'HITL 确认 + 数学计算工具 + 英语俚语老师',
+    label: '智能老师 (数学/英语/保安)',
+    hint: 'HITL 确认 + 数学计算工具 + 英语俚语老师 + 东北保安大哥',
     threadId: 'thread-teacher',
   },
 ];
