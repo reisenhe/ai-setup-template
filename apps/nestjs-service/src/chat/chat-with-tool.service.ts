@@ -1,6 +1,6 @@
 import { Injectable, MessageEvent } from '@nestjs/common';
 import { Subject } from 'rxjs';
-import { useToolAgent } from '../agent/use-tool.agent';
+import { useToolAgent } from '../agent/langchain/use-tool.agent';
 
 /**
  * 工具调用聊天服务 - 处理带工具调用的流式聊天逻辑

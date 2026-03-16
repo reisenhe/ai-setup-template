@@ -2,8 +2,8 @@ import { Injectable, MessageEvent } from '@nestjs/common';
 import { Subject } from 'rxjs';
 import { HumanMessage, SystemMessage, BaseMessage } from '@langchain/core/messages';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { chatAgent } from '../agent/chat.agent';
-import { dashScopeChatAgent } from '../agent/dashscope-chat.agent';
+import { chatAgent } from '../agent/langchain/chat.agent';
+import { dashScopeChatAgent } from '../agent/langchain/dashscope-chat.agent';
 
 /**
  * 聊天服务 - 处理 LangChain 相关的流式聊天逻辑

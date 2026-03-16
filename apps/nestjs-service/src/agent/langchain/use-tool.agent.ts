@@ -1,7 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage } from '@langchain/core/messages';
 import { IterableReadableStream } from '@langchain/core/utils/stream';
-import { timeTools } from '../tools/time.tools';
+import { timeTools } from '../../tools/time.tools';
 
 /**
  * UseToolAgent - 支持工具调用的 ChatAgent

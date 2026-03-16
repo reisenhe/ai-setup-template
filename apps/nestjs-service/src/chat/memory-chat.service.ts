@@ -1,6 +1,6 @@
 import { Injectable, MessageEvent } from '@nestjs/common';
 import { Subject } from 'rxjs';
-import { memoryChatAgent } from '../agent/memory-chat.agent';
+import { memoryChatAgent } from '../agent/langchain/memory-chat.agent';
 
 /**
  * 记忆聊天服务 - 支持短期上下文记忆的流式聊天
