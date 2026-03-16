@@ -201,8 +201,6 @@ onMounted(() => {
 .chat-interface {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  max-width: 900px;
   margin: 0 auto;
   padding: 24px 32px;
   box-sizing: border-box;
