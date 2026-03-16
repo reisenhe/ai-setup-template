@@ -3,6 +3,15 @@
     <div class="chat-header">
       <h1>AI 对话工具</h1>
     </div>
+
+    <!-- HITL 确认对话框 -->
+    <ConfirmDialog
+      :visible="showConfirmDialog"
+      :question="pendingConfirm?.question ?? ''"
+      :subject="pendingConfirm?.subject ?? ''"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
     
     <div class="chat-messages" ref="messagesContainer">
       <Message 
@@ -47,10 +56,11 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, computed } from 'vue';
 import Message from './Message.vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 import { MessageRoleEnum } from '../enums/message.enum';
 import { createEventStream } from '../controllers/sse.controller';
 
-interface Message {
+interface ChatMessage {
   content: string;
   role: MessageRoleEnum;
 }
@@ -62,7 +72,14 @@ interface ApiOption {
   threadId?: string;
 }
 
-const messages = ref<Message[]>([
+interface PendingConfirm {
+  question: string;
+  subject: string;
+  threadId: string;
+  aiMessageIndex: number; // 当前 AI 占位消息的索引，恢复时追加内容
+}
+
+const messages = ref<ChatMessage[]>([
   {
     content: '你好！我是一个 AI 助手，有什么我可以帮助你的吗？',
     role: MessageRoleEnum.ASSISTANT
@@ -72,6 +89,10 @@ const messages = ref<Message[]>([
 const inputMessage = ref('');
 const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
+
+// ── HITL 状态 ──────────────────────────────────────────────
+const showConfirmDialog = ref(false);
+const pendingConfirm = ref<PendingConfirm | null>(null);
 
 // 可用的 API 接口列表
 const apiOptions: ApiOption[] = [
@@ -102,6 +123,12 @@ const apiOptions: ApiOption[] = [
     hint: '短期记忆 - 会话 B，与 A 独立',
     threadId: 'thread-b',
   },
+  {
+    value: '/api/teacher/stream',
+    label: '智能老师 (数学/英语)',
+    hint: 'HITL 确认 + 数学计算工具 + 英语俚语老师',
+    threadId: 'thread-teacher',
+  },
 ];
 
 const selectedApiIndex = ref(2); // 默认选择工具调用接口
@@ -119,11 +146,138 @@ function scrollToBottom() {
   });
 }
 
+// ── 通用 SSE 消息处理器（标准聊天接口） ───────────────────
+function handleSseMessage(msg: any, aiMessageIndex: number) {
+  try {
+    const parsedData = JSON.parse(msg.data);
+    
+    if (parsedData.type === 'chunk' && parsedData.content) {
+      messages.value[aiMessageIndex].content += parsedData.content;
+      scrollToBottom();
+    } else if (parsedData.type === 'end') {
+      isLoading.value = false;
+      scrollToBottom();
+    } else if (parsedData.type === 'error') {
+      messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
+      isLoading.value = false;
+    }
+  } catch (error) {
+    console.error('解析消息失败:', error);
+  }
+}
+
+// ── HITL 专用消息处理器（智能老师接口） ───────────────────
+function handleTeacherSseMessage(msg: any, aiMessageIndex: number, threadId: string) {
+  try {
+    const parsedData = JSON.parse(msg.data);
+
+    if (parsedData.type === 'chunk' && parsedData.content) {
+      messages.value[aiMessageIndex].content += parsedData.content;
+      scrollToBottom();
+    } else if (parsedData.type === 'confirm') {
+      // 图被中断，等待用户确认
+      isLoading.value = false;
+      pendingConfirm.value = {
+        question: parsedData.question,
+        subject: parsedData.subject,
+        threadId,
+        aiMessageIndex,
+      };
+      showConfirmDialog.value = true;
+    } else if (parsedData.type === 'end') {
+      isLoading.value = false;
+      scrollToBottom();
+    } else if (parsedData.type === 'error') {
+      messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
+      isLoading.value = false;
+    }
+  } catch (error) {
+    console.error('解析消息失败:', error);
+  }
+}
+
+// ── 用户点击"确认"（继续让老师解答） ─────────────────────
+function handleConfirm() {
+  showConfirmDialog.value = false;
+  if (!pendingConfirm.value) return;
+
+  const { threadId, aiMessageIndex } = pendingConfirm.value;
+  pendingConfirm.value = null;
+  isLoading.value = true;
+
+  createEventStream(
+    '/api/teacher/resume',
+    { threadId, confirmed: true },
+    {
+      onopen: async (response) => {
+        if (!response.ok) {
+          messages.value[aiMessageIndex].content = '恢复连接失败，请重试';
+          isLoading.value = false;
+        }
+      },
+      onmessage: (msg) => {
+        try {
+          const parsedData = JSON.parse(msg.data);
+          if (parsedData.type === 'chunk' && parsedData.content) {
+            messages.value[aiMessageIndex].content += parsedData.content;
+            scrollToBottom();
+          } else if (parsedData.type === 'end') {
+            isLoading.value = false;
+            scrollToBottom();
+          } else if (parsedData.type === 'error') {
+            messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
+            isLoading.value = false;
+          }
+        } catch (error) {
+          console.error('解析恢复消息失败:', error);
+        }
+      },
+      onclose: () => { isLoading.value = false; },
+      onerror: (err) => {
+        console.error('恢复连接错误:', err);
+        isLoading.value = false;
+      },
+    },
+  );
+}
+
+// ── 用户点击"取消" ────────────────────────────────────────
+function handleCancel() {
+  showConfirmDialog.value = false;
+  if (!pendingConfirm.value) return;
+
+  const { threadId, aiMessageIndex } = pendingConfirm.value;
+  pendingConfirm.value = null;
+  isLoading.value = true;
+
+  createEventStream(
+    '/api/teacher/resume',
+    { threadId, confirmed: false },
+    {
+      onmessage: (msg) => {
+        try {
+          const parsedData = JSON.parse(msg.data);
+          if (parsedData.type === 'chunk' && parsedData.content) {
+            messages.value[aiMessageIndex].content += parsedData.content;
+            scrollToBottom();
+          } else if (parsedData.type === 'end') {
+            isLoading.value = false;
+          }
+        } catch (error) {
+          console.error('解析取消消息失败:', error);
+        }
+      },
+      onclose: () => { isLoading.value = false; },
+      onerror: () => { isLoading.value = false; },
+    },
+  );
+}
+
+// ── 发送消息 ──────────────────────────────────────────────
 function sendMessage() {
   const message = inputMessage.value.trim();
   if (!message || isLoading.value) return;
 
-  // 添加用户消息
   messages.value.push({
     content: message,
     role: MessageRoleEnum.USER
@@ -131,23 +285,21 @@ function sendMessage() {
 
   inputMessage.value = '';
   isLoading.value = true;
-
   scrollToBottom();
 
-  // 添加 AI 回复占位
+  // AI 回复占位
   const aiMessageIndex = messages.value.length;
   messages.value.push({
     content: '',
     role: MessageRoleEnum.ASSISTANT
   });
 
-  // 构建请求体，如果有 threadId 则添加
-  const requestBody: { message: string; threadId?: string } = { message };
-  if (currentThreadId.value) {
-    requestBody.threadId = currentThreadId.value;
-  }
+  const isTeacherApi = currentApi.value.value === '/api/teacher/stream';
+  const threadId = currentThreadId.value ?? '';
 
-  // 使用 createEventStream 与后端进行流式通信
+  const requestBody: { message: string; threadId?: string } = { message };
+  if (threadId) requestBody.threadId = threadId;
+
   createEventStream(
     currentApi.value.value,
     requestBody,
@@ -160,22 +312,10 @@ function sendMessage() {
         }
       },
       onmessage: (msg) => {
-        try {
-          const parsedData = JSON.parse(msg.data);
-          
-          if (parsedData.type === 'chunk' && parsedData.content) {
-            // 流式追加内容
-            messages.value[aiMessageIndex].content += parsedData.content;
-            scrollToBottom();
-          } else if (parsedData.type === 'end') {
-            isLoading.value = false;
-            scrollToBottom();
-          } else if (parsedData.type === 'error') {
-            messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
-            isLoading.value = false;
-          }
-        } catch (error) {
-          console.error('解析消息失败:', error);
+        if (isTeacherApi) {
+          handleTeacherSseMessage(msg, aiMessageIndex, threadId);
+        } else {
+          handleSseMessage(msg, aiMessageIndex);
         }
       },
       onclose: () => {
