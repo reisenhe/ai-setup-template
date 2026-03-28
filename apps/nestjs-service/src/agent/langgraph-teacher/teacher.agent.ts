@@ -7,7 +7,62 @@ import {
   BaseMessage,
   ToolMessage,
 } from '@langchain/core/messages';
+import type { StructuredToolInterface } from '@langchain/core/tools';
+import { MultiServerMCPClient } from '@langchain/mcp-adapters';
 import { calcTools } from '../../tools/calc.tools';
+
+// ============================================================
+// MCP Tools 懒加载 + 缓存
+// ============================================================
+
+let mcpToolsCache: StructuredToolInterface[] | null = null;
+let mcpAdapterClient: MultiServerMCPClient | null = null;
+
+/**
+ * 获取 MCP 提供的 LangChain Tools（单例懒加载）
+ * MCP 服务器视为外部独立服务，通过 SSE 协议连接
+ */
+async function getMcpTools(): Promise<StructuredToolInterface[]> {
+  if (mcpToolsCache) {
+    return mcpToolsCache;
+  }
+
+  const mcpServerUrl =
+    process.env.MCP_SERVER_URL || 'http://localhost:3000/mcp';
+
+  mcpAdapterClient = new MultiServerMCPClient({
+    // 将 MCP 服务器视为远程独立服务，通过 SSE 传输连接
+    'school-profiles': {
+      transport: 'sse',
+      url: mcpServerUrl,
+    },
+  });
+
+  mcpToolsCache = await mcpAdapterClient.getTools();
+  console.log(
+    '[MCP Adapter] Loaded tools:',
+    mcpToolsCache.map((t) => t.name),
+  );
+
+  return mcpToolsCache;
+}
+
+/**
+ * 统一的工具调用执行函数，屏蔽不同工具间的类型差异
+ */
+async function invokeTool(
+  tools: StructuredToolInterface[],
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const tool = tools.find((t) => t.name === name);
+  if (!tool) return `Tool "${name}" not found`;
+  const invoke = tool.invoke.bind(tool) as (
+    input: Record<string, unknown>,
+  ) => Promise<unknown>;
+  const result = await invoke(args);
+  return typeof result === 'string' ? result : JSON.stringify(result);
+}
 
 // ============================================================
 // 状态定义
@@ -49,15 +104,17 @@ function createLLM(streaming = true) {
 // 节点：决策者 - 判断题目类型并生成确认问句
 // ============================================================
 
-async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function deciderNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(false);
 
   const lastMessage = state.messages[state.messages.length - 1];
   const userQuestion = lastMessage?.content ?? '';
 
   const classifyPrompt = `你是一个学科分类助手。请判断以下问题属于哪个学科：
-- 如果是数学相关（加减乘除、几何、代数等）→ 回复: math
-- 如果是英语相关（词汇、语法、翻译、写作等）→ 回复: english
+- 如果是数学相关（加减乘除、几何、代数等），或者询问对象是 “陈严谨、老陈、数学老师”→ 回复: math
+- 如果是英语相关（词汇、语法、翻译、写作等），或者询问对象是 “王潇洒、潇洒哥 / Mr.W、英语老师”、→ 回复: english
 - 其他学科或无法判断 → 回复: other
 
 只回复一个单词: math / english / other
@@ -66,12 +123,18 @@ async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStat
 
   const response = await llm.invoke([new HumanMessage(classifyPrompt)]);
   const subjectRaw = (response.content as string).trim().toLowerCase();
-  const subject = ['math', 'english'].includes(subjectRaw) ? subjectRaw : 'other';
+  const subject = ['math', 'english'].includes(subjectRaw)
+    ? subjectRaw
+    : 'other';
 
   // 生成确认问句
   const subjectLabel =
-    subject === 'math' ? '数学题' : subject === 'english' ? '英语题' : '其他学科的题';
-  const confirmQuestion = `这是【${subjectLabel}】吗？`;
+    subject === 'math'
+      ? '数学老师'
+      : subject === 'english'
+        ? '英语老师'
+        : '其他学科的老师';
+  const confirmQuestion = `你要找【${subjectLabel}】吗？`;
 
   return {
     subject,
@@ -80,18 +143,87 @@ async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStat
 }
 
 // ============================================================
-// 节点：数学老师 - 带计算工具
+// 节点：数学老师 - 带计算工具 + MCP 背景查询工具
 // ============================================================
 
-async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function mathNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(true);
-  const llmWithTools = llm.bindTools(calcTools);
 
-  const systemPrompt = `你是一位严谨的数学老师。
-- 解题时条理清晰，逐步讲解
-- 需要计算时，必须使用 calculate 工具确保精确结果
-- 指导学生理解解题思路，不仅给出答案
-- 风格：专业、耐心、鼓励`;
+  // 从 MCP 服务器获取工具列表（懒加载，首次调用后缓存）
+  const mcpTools = await getMcpTools();
+  const allTools = [...calcTools, ...mcpTools];
+  const llmWithTools = llm.bindTools(allTools);
+
+  // 精简的基础系统提示：只说明角色身份和工具用途
+  // 角色的详细背景由 LLM 按需调用 get_character_info 工具获取
+  const systemPrompt = `你是这所学校的数学老师，你的角色ID是 "math"。
+
+你拥有以下工具，请按需调用：
+- get_character_info(character="math", field=...): 查询你的角色背景（可选字段: basicInfo / background / personality / relationships / dailyLife / secrets）
+- get_character_relationship(character1="math", character2=...): 查询你与其他角色的关系
+- calculate(expression=...): 进行精确数学计算
+
+【使用指引】
+- 首次回答时，建议先调用 get_character_info 获取 personality 字段，了解你的性格和教学风格
+- 解题过程中需要计算时，使用 calculate 确保结果精确
+- 被问到与其他人关系时，调用 get_character_relationship 查询
+- 始终以符合角色性格的方式回答`;
+
+  const messages: BaseMessage[] = [
+    new SystemMessage(systemPrompt),
+    ...state.messages,
+  ];
+
+  // 工具调用循环（支持 calcTools + MCP Tools 混合调用）
+  let response = await llmWithTools.invoke(messages);
+  messages.push(response);
+
+  while (response.tool_calls && response.tool_calls.length > 0) {
+    for (const toolCall of response.tool_calls) {
+      const content = await invokeTool(
+        allTools,
+        toolCall.name,
+        toolCall.args as Record<string, unknown>,
+      );
+      messages.push(new ToolMessage({ content, tool_call_id: toolCall.id! }));
+    }
+    response = await llmWithTools.invoke(messages);
+    messages.push(response);
+  }
+
+  return {
+    messages: [new AIMessage(response.content as string)],
+  };
+}
+
+// ============================================================
+// 节点：英语老师 - 带 MCP 背景查询工具
+// ============================================================
+
+async function englishNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
+  const llm = createLLM(true);
+
+  const mcpTools = await getMcpTools();
+  const llmWithTools = llm.bindTools(mcpTools);
+
+  const systemPrompt = `You are an English teacher at this school. Your character ID is "english".
+
+You have the following tools available:
+- get_character_info(character="english", field=...): Retrieve your character background (fields: basicInfo / background / personality / relationships / dailyLife / secrets)
+- get_character_relationship(character1="english", character2=...): Look up your relationship with other characters
+
+【Usage Guidelines】
+- On first response, call get_character_info with field="personality" to know your vibe and teaching style
+- The "secrets" field contains your slang dictionary — use it to maintain authentic West Coast Black slang
+- When asked about relationships, call get_character_relationship
+- Always stay in character
+
+- 用中文回复大部分的对话内容
+`;
 
   const messages: BaseMessage[] = [
     new SystemMessage(systemPrompt),
@@ -104,17 +236,12 @@ async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateTy
 
   while (response.tool_calls && response.tool_calls.length > 0) {
     for (const toolCall of response.tool_calls) {
-      const matchedTool = calcTools.find((t) => t.name === toolCall.name);
-      if (matchedTool) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (matchedTool as any).invoke(toolCall.args);
-        messages.push(
-          new ToolMessage({
-            content: typeof result === 'string' ? result : JSON.stringify(result),
-            tool_call_id: toolCall.id!,
-          }),
-        );
-      }
+      const content = await invokeTool(
+        mcpTools,
+        toolCall.name,
+        toolCall.args as Record<string, unknown>,
+      );
+      messages.push(new ToolMessage({ content, tool_call_id: toolCall.id! }));
     }
     response = await llmWithTools.invoke(messages);
     messages.push(response);
@@ -126,53 +253,49 @@ async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateTy
 }
 
 // ============================================================
-// 节点：英语老师 - 附带西海岸黑人口癖
+// 节点：热情的学校保安 - 带 MCP 背景查询工具
 // ============================================================
 
-async function englishNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function securityNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(true);
 
-  const systemPrompt = `You are an English teacher with a West Coast Black American vibe. 
-- You're knowledgeable and helpful, but you sprinkle in authentic West Coast Black slang naturally
-- Use phrases like: "no cap", "bussin", "lowkey", "finna", "on god", "bruh", "it's giving", "fr fr", "deadass", "slay", "bet", "periodt", "that's fire", "no 🧢"
-- Keep it real but educational — you still explain grammar, vocabulary, and usage clearly
-- Example tone: "Bruh, this sentence structure is lowkey fire, no cap. Let me break it down for you fr fr..."
-- Always answer in Chinese mixed with the slang for clarity`;
+  const mcpTools = await getMcpTools();
+  const llmWithTools = llm.bindTools(mcpTools);
+
+  const systemPrompt = `你是这所学校门口的保安，你的角色ID是 "security"。
+
+你拥有以下工具，请按需调用：
+- get_character_info(character="security", field=...): 查询你的角色背景（可选字段: basicInfo / background / personality / relationships / dailyLife / secrets）
+- get_character_relationship(character1="security", character2=...): 查询你与其他角色的关系
+
+【使用指引】
+- 首次回答时，建议先调用 get_character_info 获取 personality 字段，了解你的性格、东北方言词汇等
+- 被问到与其他人关系时，调用 get_character_relationship 查询
+- 始终以符合角色性格（热情东北大哥）的方式回答`;
 
   const messages: BaseMessage[] = [
     new SystemMessage(systemPrompt),
     ...state.messages,
   ];
 
-  const response = await llm.invoke(messages);
+  // 工具调用循环
+  let response = await llmWithTools.invoke(messages);
+  messages.push(response);
 
-  return {
-    messages: [new AIMessage(response.content as string)],
-  };
-}
-
-// ============================================================
-// 节点：热情的学校保安 - 东北大哥语气，直接回答非学科问题
-// ============================================================
-
-async function securityNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
-  const llm = createLLM(true);
-
-  const systemPrompt = `你是学校门口热情的东北保安大哥，人称"老李"。
-性格特点：
-- 说话带浓浓东北口音和方言，常用"哎妈呀"、"老铁"、"整"、"咋整"、"贼"、"嗯哪"、"行嗷"、"咋滴"、"可不咋地"、"那旮沓"等词
-- 极其热情，把每个学生当自家孩子看
-- 虽然不是老师，但啥都知道点，乐于帮忙
-- 如果问题超出你的知识范围，就热情地说让他们去找老师
-- 回答要简短接地气，带点幽默感
-示例风格："哎妈呀老铁，这问题整的！你说的这个嘛，老李跟你唠唠……行嗷，记住了没？有啥不懂的再来找老李！"`;
-
-  const messages: BaseMessage[] = [
-    new SystemMessage(systemPrompt),
-    ...state.messages,
-  ];
-
-  const response = await llm.invoke(messages);
+  while (response.tool_calls && response.tool_calls.length > 0) {
+    for (const toolCall of response.tool_calls) {
+      const content = await invokeTool(
+        mcpTools,
+        toolCall.name,
+        toolCall.args as Record<string, unknown>,
+      );
+      messages.push(new ToolMessage({ content, tool_call_id: toolCall.id! }));
+    }
+    response = await llmWithTools.invoke(messages);
+    messages.push(response);
+  }
 
   return {
     messages: [new AIMessage(response.content as string)],
@@ -258,10 +381,7 @@ export class TeacherAgent {
     // 这会使条件路由重新评估并将 next 指向 security 节点
     await compiledApp.updateState(config, { subject: 'other' }, 'decider');
 
-    return compiledApp.stream(
-      null,
-      { ...config, streamMode: 'messages' },
-    );
+    return compiledApp.stream(null, { ...config, streamMode: 'messages' });
   }
 
   /**
