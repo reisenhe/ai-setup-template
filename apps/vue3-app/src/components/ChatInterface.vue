@@ -12,10 +12,10 @@
       @confirm="handleConfirm"
       @cancel="handleCancel"
     />
-    
+
     <div class="chat-messages" ref="messagesContainer">
-      <Message 
-        v-for="(message, index) in messages" 
+      <Message
+        v-for="(message, index) in messages"
         :key="index"
         :content="message.content"
         :role="message.role"
@@ -24,7 +24,7 @@
         <span>AI 正在思考...</span>
       </div>
     </div>
-    
+
     <div class="api-selector">
       <label>接口选择：</label>
       <select v-model="selectedApiIndex" :disabled="isLoading">
@@ -34,7 +34,7 @@
       </select>
       <span class="api-hint">{{ currentApiHint }}</span>
     </div>
-    
+
     <div class="chat-input">
       <textarea
         v-model="inputMessage"
@@ -43,7 +43,7 @@
         @keyup.enter.shift="inputMessage += '\n'"
         :disabled="isLoading"
       ></textarea>
-      <button 
+      <button
         @click="sendMessage"
         :disabled="!inputMessage.trim() || isLoading"
       >
@@ -54,11 +54,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, computed } from 'vue';
-import Message from './Message.vue';
-import ConfirmDialog from './ConfirmDialog.vue';
-import { MessageRoleEnum } from '../enums/message.enum';
-import { createEventStream } from '../controllers/sse.controller';
+import { ref, nextTick, onMounted, computed } from "vue";
+import Message from "./Message.vue";
+import ConfirmDialog from "./ConfirmDialog.vue";
+import { MessageRoleEnum } from "../enums/message.enum";
+import { createEventStream } from "../controllers/sse.controller";
 
 interface ChatMessage {
   content: string;
@@ -81,12 +81,12 @@ interface PendingConfirm {
 
 const messages = ref<ChatMessage[]>([
   {
-    content: '你好！我是一个 AI 助手，有什么我可以帮助你的吗？',
-    role: MessageRoleEnum.ASSISTANT
-  }
+    content: "你好！我是一个 AI 助手，有什么我可以帮助你的吗？",
+    role: MessageRoleEnum.ASSISTANT,
+  },
 ]);
 
-const inputMessage = ref('');
+const inputMessage = ref("");
 const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 
@@ -96,38 +96,38 @@ const pendingConfirm = ref<PendingConfirm | null>(null);
 
 // 可用的 API 接口列表
 const apiOptions: ApiOption[] = [
-  { 
-    value: '/api/chat/stream', 
-    label: '基础聊天 (ChatOpenAI)', 
-    hint: '使用 ChatOpenAI 兼容模式，无工具调用',
-  },
-  { 
-    value: '/api/chat/dashscope/stream', 
-    label: '基础聊天 (DashScope)', 
-    hint: '使用 ChatAlibabaTongyi 原生 SDK，无工具调用',
-  },
-  { 
-    value: '/api/chat/tool/stream', 
-    label: '工具调用 (时间工具)', 
-    hint: '支持时间查询、日期计算等工具调用',
-  },
-  { 
-    value: '/api/chat/memory/stream', 
-    label: '记忆聊天 A (Thread-A)', 
-    hint: '短期记忆 - 会话 A，与 B 独立',
-    threadId: 'thread-a',
-  },
-  { 
-    value: '/api/chat/memory/stream', 
-    label: '记忆聊天 B (Thread-B)', 
-    hint: '短期记忆 - 会话 B，与 A 独立',
-    threadId: 'thread-b',
+  {
+    value: "/api/chat/stream",
+    label: "基础聊天 (ChatOpenAI)",
+    hint: "使用 ChatOpenAI 兼容模式，无工具调用",
   },
   {
-    value: '/api/teacher/stream',
-    label: '智能老师 (数学/英语/保安)',
-    hint: 'HITL 确认 + 数学计算工具 + 英语俚语老师 + 东北保安大哥',
-    threadId: 'thread-teacher',
+    value: "/api/chat/dashscope/stream",
+    label: "基础聊天 (DashScope)",
+    hint: "使用 ChatAlibabaTongyi 原生 SDK，无工具调用",
+  },
+  {
+    value: "/api/chat/tool/stream",
+    label: "工具调用 (时间工具)",
+    hint: "支持时间查询、日期计算等工具调用",
+  },
+  {
+    value: "/api/chat/memory/stream",
+    label: "记忆聊天 A (Thread-A)",
+    hint: "短期记忆 - 会话 A，与 B 独立",
+    threadId: "thread-a",
+  },
+  {
+    value: "/api/chat/memory/stream",
+    label: "记忆聊天 B (Thread-B)",
+    hint: "短期记忆 - 会话 B，与 A 独立",
+    threadId: "thread-b",
+  },
+  {
+    value: "/api/teacher/stream",
+    label: "智能老师 (数学/英语/保安)",
+    hint: "HITL 确认 + 数学计算工具 + 英语俚语老师 + 东北保安大哥",
+    threadId: "thread-teacher",
   },
 ];
 
@@ -135,7 +135,7 @@ const selectedApiIndex = ref(2); // 默认选择工具调用接口
 
 // 基于索引计算当前选中的 API 配置
 const currentApi = computed(() => apiOptions[selectedApiIndex.value]);
-const currentApiHint = computed(() => currentApi.value?.hint || '');
+const currentApiHint = computed(() => currentApi.value?.hint || "");
 const currentThreadId = computed(() => currentApi.value?.threadId);
 
 function scrollToBottom() {
@@ -150,31 +150,35 @@ function scrollToBottom() {
 function handleSseMessage(msg: any, aiMessageIndex: number) {
   try {
     const parsedData = JSON.parse(msg.data);
-    
-    if (parsedData.type === 'chunk' && parsedData.content) {
+
+    if (parsedData.type === "chunk" && parsedData.content) {
       messages.value[aiMessageIndex].content += parsedData.content;
       scrollToBottom();
-    } else if (parsedData.type === 'end') {
+    } else if (parsedData.type === "end") {
       isLoading.value = false;
       scrollToBottom();
-    } else if (parsedData.type === 'error') {
+    } else if (parsedData.type === "error") {
       messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
       isLoading.value = false;
     }
   } catch (error) {
-    console.error('解析消息失败:', error);
+    console.error("解析消息失败:", error);
   }
 }
 
 // ── HITL 专用消息处理器（智能老师接口） ───────────────────
-function handleTeacherSseMessage(msg: any, aiMessageIndex: number, threadId: string) {
+function handleTeacherSseMessage(
+  msg: any,
+  aiMessageIndex: number,
+  threadId: string,
+) {
   try {
     const parsedData = JSON.parse(msg.data);
 
-    if (parsedData.type === 'chunk' && parsedData.content) {
+    if (parsedData.type === "chunk" && parsedData.content) {
       messages.value[aiMessageIndex].content += parsedData.content;
       scrollToBottom();
-    } else if (parsedData.type === 'confirm') {
+    } else if (parsedData.type === "confirm") {
       // 图被中断，等待用户确认
       isLoading.value = false;
       pendingConfirm.value = {
@@ -184,15 +188,15 @@ function handleTeacherSseMessage(msg: any, aiMessageIndex: number, threadId: str
         aiMessageIndex,
       };
       showConfirmDialog.value = true;
-    } else if (parsedData.type === 'end') {
+    } else if (parsedData.type === "end") {
       isLoading.value = false;
       scrollToBottom();
-    } else if (parsedData.type === 'error') {
+    } else if (parsedData.type === "error") {
       messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
       isLoading.value = false;
     }
   } catch (error) {
-    console.error('解析消息失败:', error);
+    console.error("解析消息失败:", error);
   }
 }
 
@@ -206,35 +210,38 @@ function handleConfirm() {
   isLoading.value = true;
 
   createEventStream(
-    '/api/teacher/resume',
+    "/api/teacher/resume",
     { threadId, confirmed: true },
     {
       onopen: async (response) => {
         if (!response.ok) {
-          messages.value[aiMessageIndex].content = '恢复连接失败，请重试';
+          messages.value[aiMessageIndex].content = "恢复连接失败，请重试";
           isLoading.value = false;
         }
       },
       onmessage: (msg) => {
         try {
           const parsedData = JSON.parse(msg.data);
-          if (parsedData.type === 'chunk' && parsedData.content) {
+          if (parsedData.type === "chunk" && parsedData.content) {
             messages.value[aiMessageIndex].content += parsedData.content;
             scrollToBottom();
-          } else if (parsedData.type === 'end') {
+          } else if (parsedData.type === "end") {
             isLoading.value = false;
             scrollToBottom();
-          } else if (parsedData.type === 'error') {
-            messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
+          } else if (parsedData.type === "error") {
+            messages.value[aiMessageIndex].content =
+              `错误: ${parsedData.message}`;
             isLoading.value = false;
           }
         } catch (error) {
-          console.error('解析恢复消息失败:', error);
+          console.error("解析恢复消息失败:", error);
         }
       },
-      onclose: () => { isLoading.value = false; },
+      onclose: () => {
+        isLoading.value = false;
+      },
       onerror: (err) => {
-        console.error('恢复连接错误:', err);
+        console.error("恢复连接错误:", err);
         isLoading.value = false;
       },
     },
@@ -251,24 +258,28 @@ function handleCancel() {
   isLoading.value = true;
 
   createEventStream(
-    '/api/teacher/resume',
+    "/api/teacher/resume",
     { threadId, confirmed: false },
     {
       onmessage: (msg) => {
         try {
           const parsedData = JSON.parse(msg.data);
-          if (parsedData.type === 'chunk' && parsedData.content) {
+          if (parsedData.type === "chunk" && parsedData.content) {
             messages.value[aiMessageIndex].content += parsedData.content;
             scrollToBottom();
-          } else if (parsedData.type === 'end') {
+          } else if (parsedData.type === "end") {
             isLoading.value = false;
           }
         } catch (error) {
-          console.error('解析取消消息失败:', error);
+          console.error("解析取消消息失败:", error);
         }
       },
-      onclose: () => { isLoading.value = false; },
-      onerror: () => { isLoading.value = false; },
+      onclose: () => {
+        isLoading.value = false;
+      },
+      onerror: () => {
+        isLoading.value = false;
+      },
     },
   );
 }
@@ -280,56 +291,52 @@ function sendMessage() {
 
   messages.value.push({
     content: message,
-    role: MessageRoleEnum.USER
+    role: MessageRoleEnum.USER,
   });
 
-  inputMessage.value = '';
+  inputMessage.value = "";
   isLoading.value = true;
   scrollToBottom();
 
   // AI 回复占位
   const aiMessageIndex = messages.value.length;
   messages.value.push({
-    content: '',
-    role: MessageRoleEnum.ASSISTANT
+    content: "",
+    role: MessageRoleEnum.ASSISTANT,
   });
 
-  const isTeacherApi = currentApi.value.value === '/api/teacher/stream';
-  const threadId = currentThreadId.value ?? '';
+  const isTeacherApi = currentApi.value.value === "/api/teacher/stream";
+  const threadId = currentThreadId.value ?? "";
 
   const requestBody: { message: string; threadId?: string } = { message };
   if (threadId) requestBody.threadId = threadId;
 
-  createEventStream(
-    currentApi.value.value,
-    requestBody,
-    {
-      onopen: async (response) => {
-        if (!response.ok) {
-          console.error('连接失败:', response.status);
-          messages.value[aiMessageIndex].content = '连接失败，请重试';
-          isLoading.value = false;
-        }
-      },
-      onmessage: (msg) => {
-        if (isTeacherApi) {
-          handleTeacherSseMessage(msg, aiMessageIndex, threadId);
-        } else {
-          handleSseMessage(msg, aiMessageIndex);
-        }
-      },
-      onclose: () => {
-        isLoading.value = false;
-      },
-      onerror: (err) => {
-        console.error('发生错误:', err);
-        if (!messages.value[aiMessageIndex].content) {
-          messages.value[aiMessageIndex].content = '连接出错，请重试';
-        }
+  createEventStream(currentApi.value.value, requestBody, {
+    onopen: async (response) => {
+      if (!response.ok) {
+        console.error("连接失败:", response.status);
+        messages.value[aiMessageIndex].content = "连接失败，请重试";
         isLoading.value = false;
       }
-    }
-  );
+    },
+    onmessage: (msg) => {
+      if (isTeacherApi) {
+        handleTeacherSseMessage(msg, aiMessageIndex, threadId);
+      } else {
+        handleSseMessage(msg, aiMessageIndex);
+      }
+    },
+    onclose: () => {
+      isLoading.value = false;
+    },
+    onerror: (err) => {
+      console.error("发生错误:", err);
+      if (!messages.value[aiMessageIndex].content) {
+        messages.value[aiMessageIndex].content = "连接出错，请重试";
+      }
+      isLoading.value = false;
+    },
+  });
 }
 
 onMounted(() => {
@@ -371,7 +378,7 @@ onMounted(() => {
   backdrop-filter: blur(10px);
   border-radius: 16px;
   margin-bottom: 20px;
-  box-shadow: 
+  box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.06),
     0 1px 2px rgba(0, 0, 0, 0.04);
 }
@@ -382,7 +389,7 @@ onMounted(() => {
   padding: 16px;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow: 
+  box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.08),
     0 1px 3px rgba(0, 0, 0, 0.04);
 }
@@ -454,7 +461,7 @@ onMounted(() => {
 }
 
 .loading-indicator::before {
-  content: '';
+  content: "";
   width: 8px;
   height: 8px;
   background: #f59e0b;
@@ -463,8 +470,15 @@ onMounted(() => {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
 }
 
 /* 滚动条样式 */

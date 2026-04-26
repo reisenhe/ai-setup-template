@@ -8,10 +8,20 @@ import { ChatWithToolService } from './chat/chat-with-tool.service';
 import { MemoryChatService } from './chat/memory-chat.service';
 import { TeacherController } from './langgraph-teacher/teacher.controller';
 import { TeacherService } from './langgraph-teacher/teacher.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
 
 @Module({
-  imports: [],
+  imports: [PrismaModule, AuthModule, UserModule],
   controllers: [AppController, ChatController, TeacherController],
-  providers: [AppService, ChatService, OpenAIChatService, ChatWithToolService, MemoryChatService, TeacherService],
+  providers: [
+    AppService,
+    ChatService,
+    OpenAIChatService,
+    ChatWithToolService,
+    MemoryChatService,
+    TeacherService,
+  ],
 })
 export class AppModule {}
