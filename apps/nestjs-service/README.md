@@ -37,6 +37,13 @@ src/
 │   ├── chat.controller.ts    # 聊天控制器
 │   ├── chat.service.ts       # 聊天服务
 │   └── ...                   # 其他聊天服务
+├── chat-thread/         # 会话管理模块
+│   ├── chat-thread.controller.ts # 会话控制器
+│   ├── chat-thread.module.ts   # 会话模块
+│   └── chat-thread.service.ts  # 会话服务
+├── checkpointer/        # LangGraph 检查点模块
+│   ├── langgraph-checkpointer.module.ts  # 检查点模块（全局）
+│   └── langgraph-checkpointer.service.ts # PostgresSaver 服务
 ├── langgraph-teacher/   # 教师模块
 │   ├── teacher.controller.ts # 教师控制器
 │   └── teacher.service.ts    # 教师服务
@@ -105,6 +112,14 @@ npx prisma studio
 当前使用 PostgreSQL 数据库，包含以下表：
 
 - **User** - 用户表（id, email, username, password, createdAt, updatedAt）
+- **ChatThread** - 聊天会话表（id, userId, agentType, title, createdAt, updatedAt）
+  - 与 User 建立一对多关系，删除用户时级联删除会话
+  - 索引：`[userId, agentType, updatedAt]` 优化查询性能
+- **LangGraph Checkpoints** - LangGraph 框架自动管理的检查点表（由 `@langchain/langgraph-checkpoint-postgres` 自动创建）
+  - `checkpoints` - 检查点元数据
+  - `checkpoint_blobs` - 检查点数据（消息内容等）
+  - `checkpoint_writes` - 检查点写入记录
+  - `checkpoint_migrations` - 检查点迁移记录
 
 ## 启动开发服务器
 
@@ -212,7 +227,42 @@ Authorization: Bearer <access_token>
 - `GET /chat/dashscope/stream?message=xxx` - DashScope 聊天
 - `GET /chat/openai/stream?message=xxx` - OpenAI 聊天
 - `GET /chat/tool/stream?message=xxx` - 工具调用聊天
-- `GET /chat/memory/stream?message=xxx&threadId=xxx` - 记忆聊天
+- `GET /chat/memory/stream?message=xxx&threadId=xxx` - 记忆聊天（支持会话持久化）
+
+### 会话管理接口（需要 JWT 认证）
+
+- `GET /chat-threads?agentType=memory|teacher` - 获取用户的会话列表
+- `POST /chat-threads` - 创建新会话（body: `{ agentType, title? }`）
+- `PATCH /chat-threads/:id` - 重命名会话（body: `{ title }`）
+- `DELETE /chat-threads/:id` - 删除会话（同时删除对应的 LangGraph checkpoint）
+- `GET /chat-threads/:id/messages` - 获取会话的历史消息列表
+
+**创建会话示例**：
+
+```bash
+curl -X POST http://localhost:3000/chat-threads \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"agentType":"memory","title":"我的对话"}'
+```
+
+**获取历史消息示例**：
+
+```bash
+curl http://localhost:3000/chat-threads/{threadId}/messages \
+  -H "Authorization: Bearer <token>"
+```
+
+响应：
+
+```json
+{
+  "messages": [
+    { "role": "human", "content": "你好" },
+    { "role": "ai", "content": "你好！有什么可以帮助你的？" }
+  ]
+}
+```
 
 ### 教师接口（需要 JWT 认证）
 
@@ -254,6 +304,34 @@ streamChat(@Body() body: ChatDto) {
 }
 ```
 
+### 会话持久化（LangGraph Checkpointer）
+
+项目使用 `@langchain/langgraph-checkpoint-postgres` 实现对话状态的数据库持久化：
+
+**核心模块**：
+
+- **LanggraphCheckpointerModule** - 全局模块，提供 PostgresSaver 单例
+- **LanggraphCheckpointerService** - 管理 PostgresSaver 生命周期（setup/end）
+
+**工作原理**：
+
+1. 应用启动时，`PostgresSaver.fromConnString(DATABASE_URL)` 创建检查点保存器
+2. 调用 `saver.setup()` 自动在数据库中创建 checkpoint 相关表
+3. Agent 编译时注入 checkpointer：`workflow.compile({ checkpointer: saver })`
+4. 每次对话状态变更自动持久化到 PostgreSQL
+5. 重启服务后，使用相同 `threadId` 可继续之前的对话
+
+**智能体改造**：
+
+- `MemoryChatAgent` - 改为 `@Injectable()`，懒加载模式，首次调用时编译
+- `TeacherAgent` - 改为 `@Injectable()`，保留 HITL 中断/恢复功能
+
+**会话管理**：
+
+- `ChatThreadService` - 管理用户会话列表，校验归属权和 agentType
+- 首条消息时自动更新会话标题（取用户消息前 30 字）
+- 删除会话时同步清理 LangGraph checkpoint 数据
+
 ### 数据库模块
 
 使用 Prisma ORM 管理数据库：
@@ -262,6 +340,8 @@ streamChat(@Body() body: ChatDto) {
 - **PrismaService** - 继承 PrismaClient，自动连接数据库
 - **UserModule** - 用户 CRUD 操作
 - **AuthModule** - 认证逻辑和 JWT 管理
+- **LanggraphCheckpointerModule** - LangGraph 检查点持久化（全局模块）
+- **ChatThreadModule** - 会话管理模块（CRUD + 历史消息）
 
 ## 参考资料
 

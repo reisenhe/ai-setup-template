@@ -1,142 +1,155 @@
 <template>
-  <div class="chat-interface">
-    <div class="chat-header">
-      <h1>AI 对话工具</h1>
-    </div>
-
-    <!-- HITL 确认对话框 -->
-    <ConfirmDialog
-      :visible="showConfirmDialog"
-      :question="pendingConfirm?.question ?? ''"
-      :subject="pendingConfirm?.subject ?? ''"
-      @confirm="handleConfirm"
-      @cancel="handleCancel"
-    />
-
-    <div class="chat-messages" ref="messagesContainer">
-      <Message
-        v-for="(message, index) in messages"
-        :key="index"
-        :content="message.content"
-        :role="message.role"
-      />
-      <div v-if="isLoading" class="loading-indicator">
-        <span>AI 正在思考...</span>
+  <div class="chat-layout">
+    <!-- ── 侧边栏：会话列表 ────────────────────── -->
+    <aside class="chat-sidebar">
+      <div class="sidebar-header">
+        <h3>会话列表</h3>
       </div>
-    </div>
 
-    <div class="api-selector">
-      <label>接口选择：</label>
-      <select v-model="selectedApiIndex" :disabled="isLoading">
-        <option v-for="(api, index) in apiOptions" :key="index" :value="index">
-          {{ api.label }}
-        </option>
-      </select>
-      <span class="api-hint">{{ currentApiHint }}</span>
-    </div>
+      <div class="sidebar-agent-tabs">
+        <button
+          :class="{ active: selectedAgent === 'memory' }"
+          @click="switchAgent('memory')"
+        >
+          记忆聊天
+        </button>
+        <button
+          :class="{ active: selectedAgent === 'teacher' }"
+          @click="switchAgent('teacher')"
+        >
+          智能老师
+        </button>
+      </div>
 
-    <div class="chat-input">
-      <textarea
-        v-model="inputMessage"
-        placeholder="输入你的问题..."
-        @keyup.enter.exact="sendMessage"
-        @keyup.enter.shift="inputMessage += '\n'"
-        :disabled="isLoading"
-      ></textarea>
-      <button
-        @click="sendMessage"
-        :disabled="!inputMessage.trim() || isLoading"
-      >
-        发送
+      <button class="new-thread-btn" @click="handleCreateThread">
+        + 新建会话
       </button>
+
+      <div class="thread-list">
+        <div
+          v-for="thread in threads"
+          :key="thread.id"
+          :class="{
+            'thread-item': true,
+            active: thread.id === currentThreadId,
+          }"
+          @click="handleSelectThread(thread.id)"
+        >
+          <span class="thread-title" :title="thread.title">{{
+            thread.title
+          }}</span>
+          <button
+            class="thread-delete"
+            title="删除会话"
+            @click.stop="handleDeleteThread(thread.id)"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="!threads.length" class="thread-empty">暂无会话</div>
+      </div>
+    </aside>
+
+    <!-- ── 主区域：对话 ────────────────────── -->
+    <div class="chat-interface">
+      <div class="chat-header">
+        <h1>AI 对话工具</h1>
+        <span v-if="currentThread" class="current-thread-label">
+          当前：{{ currentThread.title }}
+        </span>
+      </div>
+
+      <ConfirmDialog
+        :visible="showConfirmDialog"
+        :question="pendingConfirm?.question ?? ''"
+        :subject="pendingConfirm?.subject ?? ''"
+        @confirm="handleConfirm"
+        @cancel="handleCancel"
+      />
+
+      <div class="chat-messages" ref="messagesContainer">
+        <Message
+          v-for="(message, index) in messages"
+          :key="index"
+          :content="message.content"
+          :role="message.role"
+        />
+        <div v-if="isLoading" class="loading-indicator">
+          <span>AI 正在思考...</span>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <textarea
+          v-model="inputMessage"
+          :placeholder="
+            currentThreadId ? '输入你的问题...' : '请先在左侧选择或新建一个会话'
+          "
+          @keyup.enter.exact="sendMessage"
+          @keyup.enter.shift="inputMessage += '\n'"
+          :disabled="isLoading || !currentThreadId"
+        ></textarea>
+        <button
+          @click="sendMessage"
+          :disabled="!inputMessage.trim() || isLoading || !currentThreadId"
+        >
+          发送
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, computed } from "vue";
+import { ref, nextTick, onMounted, computed, watch } from "vue";
 import Message from "./Message.vue";
 import ConfirmDialog from "./ConfirmDialog.vue";
 import { MessageRoleEnum } from "../enums/message.enum";
 import { createEventStream } from "../controllers/sse.controller";
+import {
+  listThreads,
+  createThread,
+  deleteThread as apiDeleteThread,
+  getThreadMessages,
+  type AgentType,
+  type ChatThread,
+} from "../api/services/chat-thread.service";
 
 interface ChatMessage {
   content: string;
   role: MessageRoleEnum;
 }
 
-interface ApiOption {
-  value: string;
-  label: string;
-  hint: string;
-  threadId?: string;
-}
-
 interface PendingConfirm {
   question: string;
   subject: string;
   threadId: string;
-  aiMessageIndex: number; // 当前 AI 占位消息的索引，恢复时追加内容
+  aiMessageIndex: number;
 }
 
-const messages = ref<ChatMessage[]>([
-  {
-    content: "你好！我是一个 AI 助手，有什么我可以帮助你的吗？",
-    role: MessageRoleEnum.ASSISTANT,
-  },
-]);
-
+const messages = ref<ChatMessage[]>([]);
 const inputMessage = ref("");
 const isLoading = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 
-// ── HITL 状态 ──────────────────────────────────────────────
+// ── HITL ──────────────────────────────────────
 const showConfirmDialog = ref(false);
 const pendingConfirm = ref<PendingConfirm | null>(null);
 
-// 可用的 API 接口列表
-const apiOptions: ApiOption[] = [
-  {
-    value: "/api/chat/stream",
-    label: "基础聊天 (ChatOpenAI)",
-    hint: "使用 ChatOpenAI 兼容模式，无工具调用",
-  },
-  {
-    value: "/api/chat/dashscope/stream",
-    label: "基础聊天 (DashScope)",
-    hint: "使用 ChatAlibabaTongyi 原生 SDK，无工具调用",
-  },
-  {
-    value: "/api/chat/tool/stream",
-    label: "工具调用 (时间工具)",
-    hint: "支持时间查询、日期计算等工具调用",
-  },
-  {
-    value: "/api/chat/memory/stream",
-    label: "记忆聊天 A (Thread-A)",
-    hint: "短期记忆 - 会话 A，与 B 独立",
-    threadId: "thread-a",
-  },
-  {
-    value: "/api/chat/memory/stream",
-    label: "记忆聊天 B (Thread-B)",
-    hint: "短期记忆 - 会话 B，与 A 独立",
-    threadId: "thread-b",
-  },
-  {
-    value: "/api/teacher/stream",
-    label: "智能老师 (数学/英语/保安)",
-    hint: "HITL 确认 + 数学计算工具 + 英语俚语老师 + 东北保安大哥",
-    threadId: "thread-teacher",
-  },
-];
+// ── 会话列表/切换 ─────────────────────────────
+const selectedAgent = ref<AgentType>("memory");
+const threads = ref<ChatThread[]>([]);
+const currentThreadId = ref<string>("");
 
-const selectedApiIndex = ref(2); // 默认选择工具调用接口
+const currentThread = computed(() =>
+  threads.value.find((t) => t.id === currentThreadId.value),
+);
 
-// 基于索引计算当前选中的 API 配置
-const currentApi = computed(() => apiOptions[selectedApiIndex.value]);
-const currentApiHint = computed(() => currentApi.value?.hint || "");
-const currentThreadId = computed(() => currentApi.value?.threadId);
+const streamEndpoint = computed(() =>
+  selectedAgent.value === "teacher"
+    ? "/api/teacher/stream"
+    : "/api/chat/memory/stream",
+);
 
 function scrollToBottom() {
   nextTick(() => {
@@ -146,17 +159,71 @@ function scrollToBottom() {
   });
 }
 
-// ── 通用 SSE 消息处理器（标准聊天接口） ───────────────────
+// ── 侧边栏：加载会话 / 切换 / 新建 / 删除 ────────
+async function refreshThreads(selectLatest = false) {
+  const list = (await listThreads(
+    selectedAgent.value,
+  )) as unknown as ChatThread[];
+  threads.value = list;
+  if (selectLatest && list.length) {
+    await handleSelectThread(list[0].id);
+  } else if (!list.length) {
+    currentThreadId.value = "";
+    messages.value = [];
+  }
+}
+
+async function switchAgent(agent: AgentType) {
+  if (agent === selectedAgent.value) return;
+  selectedAgent.value = agent;
+  currentThreadId.value = "";
+  messages.value = [];
+  await refreshThreads(true);
+}
+
+async function handleCreateThread() {
+  const thread = (await createThread(
+    selectedAgent.value,
+  )) as unknown as ChatThread;
+  threads.value = [thread, ...threads.value];
+  await handleSelectThread(thread.id);
+}
+
+async function handleDeleteThread(id: string) {
+  if (!confirm("确定要删除这个会话吗？")) return;
+  await apiDeleteThread(id);
+  threads.value = threads.value.filter((t) => t.id !== id);
+  if (currentThreadId.value === id) {
+    currentThreadId.value = "";
+    messages.value = [];
+  }
+}
+
+async function handleSelectThread(id: string) {
+  currentThreadId.value = id;
+  // 加载历史消息
+  const history = (await getThreadMessages(id)) as unknown as Array<{
+    role: "user" | "assistant";
+    content: string;
+  }>;
+  messages.value = history.map((m) => ({
+    content: m.content,
+    role: m.role === "user" ? MessageRoleEnum.USER : MessageRoleEnum.ASSISTANT,
+  }));
+  scrollToBottom();
+}
+
+// ── SSE 消息处理（基础） ─────────────────────
 function handleSseMessage(msg: any, aiMessageIndex: number) {
   try {
     const parsedData = JSON.parse(msg.data);
-
     if (parsedData.type === "chunk" && parsedData.content) {
       messages.value[aiMessageIndex].content += parsedData.content;
       scrollToBottom();
     } else if (parsedData.type === "end") {
       isLoading.value = false;
       scrollToBottom();
+      refreshThreads();
     } else if (parsedData.type === "error") {
       messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
       isLoading.value = false;
@@ -166,7 +233,7 @@ function handleSseMessage(msg: any, aiMessageIndex: number) {
   }
 }
 
-// ── HITL 专用消息处理器（智能老师接口） ───────────────────
+// ── SSE 消息处理（老师 HITL） ─────────────────
 function handleTeacherSseMessage(
   msg: any,
   aiMessageIndex: number,
@@ -174,12 +241,10 @@ function handleTeacherSseMessage(
 ) {
   try {
     const parsedData = JSON.parse(msg.data);
-
     if (parsedData.type === "chunk" && parsedData.content) {
       messages.value[aiMessageIndex].content += parsedData.content;
       scrollToBottom();
     } else if (parsedData.type === "confirm") {
-      // 图被中断，等待用户确认
       isLoading.value = false;
       pendingConfirm.value = {
         question: parsedData.question,
@@ -191,6 +256,7 @@ function handleTeacherSseMessage(
     } else if (parsedData.type === "end") {
       isLoading.value = false;
       scrollToBottom();
+      refreshThreads();
     } else if (parsedData.type === "error") {
       messages.value[aiMessageIndex].content = `错误: ${parsedData.message}`;
       isLoading.value = false;
@@ -200,7 +266,7 @@ function handleTeacherSseMessage(
   }
 }
 
-// ── 用户点击"确认"（继续让老师解答） ─────────────────────
+// ── HITL 确认 ────────────────────────────────
 function handleConfirm() {
   showConfirmDialog.value = false;
   if (!pendingConfirm.value) return;
@@ -213,42 +279,18 @@ function handleConfirm() {
     "/api/teacher/resume",
     { threadId, confirmed: true },
     {
-      onopen: async (response) => {
-        if (!response.ok) {
-          messages.value[aiMessageIndex].content = "恢复连接失败，请重试";
-          isLoading.value = false;
-        }
-      },
-      onmessage: (msg) => {
-        try {
-          const parsedData = JSON.parse(msg.data);
-          if (parsedData.type === "chunk" && parsedData.content) {
-            messages.value[aiMessageIndex].content += parsedData.content;
-            scrollToBottom();
-          } else if (parsedData.type === "end") {
-            isLoading.value = false;
-            scrollToBottom();
-          } else if (parsedData.type === "error") {
-            messages.value[aiMessageIndex].content =
-              `错误: ${parsedData.message}`;
-            isLoading.value = false;
-          }
-        } catch (error) {
-          console.error("解析恢复消息失败:", error);
-        }
-      },
+      onmessage: (msg) =>
+        handleTeacherSseMessage(msg, aiMessageIndex, threadId),
       onclose: () => {
         isLoading.value = false;
       },
-      onerror: (err) => {
-        console.error("恢复连接错误:", err);
+      onerror: () => {
         isLoading.value = false;
       },
     },
   );
 }
 
-// ── 用户点击"取消" ────────────────────────────────────────
 function handleCancel() {
   showConfirmDialog.value = false;
   if (!pendingConfirm.value) return;
@@ -261,19 +303,8 @@ function handleCancel() {
     "/api/teacher/resume",
     { threadId, confirmed: false },
     {
-      onmessage: (msg) => {
-        try {
-          const parsedData = JSON.parse(msg.data);
-          if (parsedData.type === "chunk" && parsedData.content) {
-            messages.value[aiMessageIndex].content += parsedData.content;
-            scrollToBottom();
-          } else if (parsedData.type === "end") {
-            isLoading.value = false;
-          }
-        } catch (error) {
-          console.error("解析取消消息失败:", error);
-        }
-      },
+      onmessage: (msg) =>
+        handleTeacherSseMessage(msg, aiMessageIndex, threadId),
       onclose: () => {
         isLoading.value = false;
       },
@@ -284,100 +315,229 @@ function handleCancel() {
   );
 }
 
-// ── 发送消息 ──────────────────────────────────────────────
+// ── 发送消息 ─────────────────────────────────
 function sendMessage() {
   const message = inputMessage.value.trim();
-  if (!message || isLoading.value) return;
+  if (!message || isLoading.value || !currentThreadId.value) return;
 
-  messages.value.push({
-    content: message,
-    role: MessageRoleEnum.USER,
-  });
-
+  messages.value.push({ content: message, role: MessageRoleEnum.USER });
   inputMessage.value = "";
   isLoading.value = true;
   scrollToBottom();
 
-  // AI 回复占位
   const aiMessageIndex = messages.value.length;
-  messages.value.push({
-    content: "",
-    role: MessageRoleEnum.ASSISTANT,
-  });
+  messages.value.push({ content: "", role: MessageRoleEnum.ASSISTANT });
 
-  const isTeacherApi = currentApi.value.value === "/api/teacher/stream";
-  const threadId = currentThreadId.value ?? "";
+  const isTeacherApi = selectedAgent.value === "teacher";
+  const threadId = currentThreadId.value;
 
-  const requestBody: { message: string; threadId?: string } = { message };
-  if (threadId) requestBody.threadId = threadId;
-
-  createEventStream(currentApi.value.value, requestBody, {
-    onopen: async (response) => {
-      if (!response.ok) {
-        console.error("连接失败:", response.status);
-        messages.value[aiMessageIndex].content = "连接失败，请重试";
+  createEventStream(
+    streamEndpoint.value,
+    { message, threadId },
+    {
+      onopen: async (response) => {
+        if (!response.ok) {
+          messages.value[aiMessageIndex].content = "连接失败，请重试";
+          isLoading.value = false;
+        }
+      },
+      onmessage: (msg) => {
+        if (isTeacherApi) {
+          handleTeacherSseMessage(msg, aiMessageIndex, threadId);
+        } else {
+          handleSseMessage(msg, aiMessageIndex);
+        }
+      },
+      onclose: () => {
         isLoading.value = false;
-      }
+      },
+      onerror: (err) => {
+        console.error("发生错误:", err);
+        if (!messages.value[aiMessageIndex].content) {
+          messages.value[aiMessageIndex].content = "连接出错，请重试";
+        }
+        isLoading.value = false;
+      },
     },
-    onmessage: (msg) => {
-      if (isTeacherApi) {
-        handleTeacherSseMessage(msg, aiMessageIndex, threadId);
-      } else {
-        handleSseMessage(msg, aiMessageIndex);
-      }
-    },
-    onclose: () => {
-      isLoading.value = false;
-    },
-    onerror: (err) => {
-      console.error("发生错误:", err);
-      if (!messages.value[aiMessageIndex].content) {
-        messages.value[aiMessageIndex].content = "连接出错，请重试";
-      }
-      isLoading.value = false;
-    },
-  });
+  );
 }
 
-onMounted(() => {
+// 进入页面或切换 agent 时加载
+watch(
+  selectedAgent,
+  () => {
+    refreshThreads(true);
+  },
+  { immediate: false },
+);
+
+onMounted(async () => {
+  await refreshThreads(true);
   scrollToBottom();
 });
 </script>
 
 <style scoped>
-.chat-interface {
+.chat-layout {
   display: flex;
-  flex-direction: column;
   height: 100vh;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px 32px;
-  box-sizing: border-box;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
 }
 
+/* ── 侧边栏 ───────────────────────── */
+.chat-sidebar {
+  width: 260px;
+  padding: 20px 16px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.sidebar-agent-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-agent-tabs button {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sidebar-agent-tabs button.active {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  border-color: transparent;
+}
+
+.new-thread-btn {
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(59, 130, 246, 0.25);
+  transition: transform 0.2s;
+}
+.new-thread-btn:hover {
+  transform: translateY(-1px);
+}
+
+.thread-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+
+.thread-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(243, 244, 246, 0.7);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.thread-item:hover {
+  background: rgba(209, 213, 219, 0.8);
+}
+.thread-item.active {
+  background: rgba(99, 102, 241, 0.12);
+  box-shadow: inset 3px 0 0 #6366f1;
+}
+
+.thread-title {
+  flex: 1;
+  font-size: 13px;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thread-delete {
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.thread-delete:hover {
+  color: #ef4444;
+}
+
+.thread-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* ── 主聊天区 ────────────────────── */
+.chat-interface {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 32px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .chat-header {
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
 }
 
 .chat-header h1 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   color: #1a1a2e;
   margin: 0;
-  letter-spacing: -0.5px;
+}
+
+.current-thread-label {
+  font-size: 13px;
+  color: #6b7280;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 20px;
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
   border-radius: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.06),
     0 1px 2px rgba(0, 0, 0, 0.04);
@@ -385,62 +545,51 @@ onMounted(() => {
 
 .chat-input {
   display: flex;
-  gap: 14px;
-  padding: 16px;
+  gap: 12px;
+  padding: 14px;
   background: rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  box-shadow:
-    0 4px 20px rgba(0, 0, 0, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .chat-input textarea {
   flex: 1;
-  padding: 14px 18px;
+  padding: 12px 16px;
   border: 2px solid #e8e8e8;
   border-radius: 12px;
   resize: none;
-  height: 80px;
+  height: 70px;
   font-size: 15px;
   font-family: inherit;
   background: #fafafa;
   color: #333;
-  transition: all 0.25s ease;
+  transition: all 0.2s;
 }
-
 .chat-input textarea:focus {
   outline: none;
   border-color: #6366f1;
   background: #fff;
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
 }
-
 .chat-input textarea::placeholder {
   color: #9ca3af;
 }
 
 .chat-input button {
-  padding: 0 28px;
+  padding: 0 24px;
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: white;
+  color: #fff;
   border: none;
   border-radius: 12px;
   cursor: pointer;
   font-size: 15px;
   font-weight: 500;
-  transition: all 0.25s ease;
+  transition: all 0.2s;
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
-
 .chat-input button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
 }
-
-.chat-input button:active:not(:disabled) {
-  transform: translateY(0);
-}
-
 .chat-input button:disabled {
   background: linear-gradient(135deg, #d1d5db 0%, #c4c7cc 100%);
   cursor: not-allowed;
@@ -451,15 +600,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
-  padding: 12px 16px;
+  margin-top: 10px;
+  padding: 10px 14px;
   background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
   border-radius: 12px;
   color: #92400e;
   font-size: 14px;
   font-weight: 500;
 }
-
 .loading-indicator::before {
   content: "";
   width: 8px;
@@ -481,75 +629,13 @@ onMounted(() => {
   }
 }
 
-/* 滚动条样式 */
-.chat-messages::-webkit-scrollbar {
+.chat-messages::-webkit-scrollbar,
+.thread-list::-webkit-scrollbar {
   width: 6px;
 }
-
-.chat-messages::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 3px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
+.chat-messages::-webkit-scrollbar-thumb,
+.thread-list::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
   border-radius: 3px;
-  transition: background 0.2s;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.api-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 12px;
-  margin-bottom: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.api-selector label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #4b5563;
-  white-space: nowrap;
-}
-
-.api-selector select {
-  padding: 8px 12px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 14px;
-  background: #fff;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 200px;
-}
-
-.api-selector select:hover:not(:disabled) {
-  border-color: #6366f1;
-}
-
-.api-selector select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.api-selector select:disabled {
-  background: #f3f4f6;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.api-hint {
-  font-size: 12px;
-  color: #9ca3af;
-  flex: 1;
 }
 </style>

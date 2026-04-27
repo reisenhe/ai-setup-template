@@ -1,6 +1,13 @@
 import { Controller, Post, Body, Sse, MessageEvent } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { TeacherService } from './teacher.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+interface AuthUser {
+  id: number;
+  email: string;
+  username: string;
+}
 
 /**
  * 智能老师控制器
@@ -17,10 +24,16 @@ export class TeacherController {
   @Post('stream')
   @Sse()
   streamChat(
+    @CurrentUser() user: AuthUser,
     @Body() body: { message: string; threadId: string },
   ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.teacherService.streamChat(body.message, subject, body.threadId);
+    this.teacherService.streamChat(
+      user.id,
+      body.message,
+      subject,
+      body.threadId,
+    );
     return subject.asObservable();
   }
 
@@ -31,10 +44,16 @@ export class TeacherController {
   @Post('resume')
   @Sse()
   resumeChat(
+    @CurrentUser() user: AuthUser,
     @Body() body: { threadId: string; confirmed: boolean },
   ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.teacherService.resumeChat(body.threadId, body.confirmed, subject);
+    this.teacherService.resumeChat(
+      user.id,
+      body.threadId,
+      body.confirmed,
+      subject,
+    );
     return subject.asObservable();
   }
 }

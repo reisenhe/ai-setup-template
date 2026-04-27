@@ -1,9 +1,23 @@
-import { Controller, Post, Body, Sse, Query, MessageEvent, Delete, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Sse,
+  Query,
+  MessageEvent,
+} from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { ChatService } from './chat.service';
 import { OpenAIChatService } from './openai-chat.service';
 import { ChatWithToolService } from './chat-with-tool.service';
 import { MemoryChatService } from './memory-chat.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+interface AuthUser {
+  id: number;
+  email: string;
+  username: string;
+}
 
 /**
  * SSE 聊天控制器
@@ -37,7 +51,9 @@ export class ChatController {
    */
   @Post('stream')
   @Sse()
-  streamChatPost(@Body() body: { message: string; systemPrompt?: string }): Observable<MessageEvent> {
+  streamChatPost(
+    @Body() body: { message: string; systemPrompt?: string },
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
     this.chatService.streamChat(body.message, subject, body.systemPrompt);
     return subject.asObservable();
@@ -50,7 +66,9 @@ export class ChatController {
    * GET /chat/dashscope/stream?message=xxx
    */
   @Sse('dashscope/stream')
-  dashscopeStreamChat(@Query('message') message: string): Observable<MessageEvent> {
+  dashscopeStreamChat(
+    @Query('message') message: string,
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
     this.chatService.streamDashScopeChat(message, subject);
     return subject.asObservable();
@@ -62,9 +80,15 @@ export class ChatController {
    */
   @Post('dashscope/stream')
   @Sse()
-  dashscopeStreamChatPost(@Body() body: { message: string; systemPrompt?: string }): Observable<MessageEvent> {
+  dashscopeStreamChatPost(
+    @Body() body: { message: string; systemPrompt?: string },
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.chatService.streamDashScopeChat(body.message, subject, body.systemPrompt);
+    this.chatService.streamDashScopeChat(
+      body.message,
+      subject,
+      body.systemPrompt,
+    );
     return subject.asObservable();
   }
 
@@ -75,7 +99,9 @@ export class ChatController {
    * GET /chat/openai/stream?message=xxx
    */
   @Sse('openai/stream')
-  openaiStreamChat(@Query('message') message: string): Observable<MessageEvent> {
+  openaiStreamChat(
+    @Query('message') message: string,
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
     this.openAIChatService.streamChat(message, subject);
     return subject.asObservable();
@@ -87,7 +113,9 @@ export class ChatController {
    */
   @Post('openai/stream')
   @Sse()
-  openaiStreamChatPost(@Body() body: { message: string; systemPrompt?: string }): Observable<MessageEvent> {
+  openaiStreamChatPost(
+    @Body() body: { message: string; systemPrompt?: string },
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
     this.openAIChatService.streamChat(body.message, subject, body.systemPrompt);
     return subject.asObservable();
@@ -112,9 +140,15 @@ export class ChatController {
    */
   @Post('tool/stream')
   @Sse()
-  toolStreamChatPost(@Body() body: { message: string; systemPrompt?: string }): Observable<MessageEvent> {
+  toolStreamChatPost(
+    @Body() body: { message: string; systemPrompt?: string },
+  ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.chatWithToolService.streamChat(body.message, subject, body.systemPrompt);
+    this.chatWithToolService.streamChat(
+      body.message,
+      subject,
+      body.systemPrompt,
+    );
     return subject.asObservable();
   }
 
@@ -126,11 +160,12 @@ export class ChatController {
    */
   @Sse('memory/stream')
   memoryStreamChat(
+    @CurrentUser() user: AuthUser,
     @Query('message') message: string,
-    @Query('threadId') threadId?: string,
+    @Query('threadId') threadId: string,
   ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.memoryChatService.streamChat(message, subject, threadId);
+    this.memoryChatService.streamChat(user.id, message, subject, threadId);
     return subject.asObservable();
   }
 
@@ -141,11 +176,16 @@ export class ChatController {
   @Post('memory/stream')
   @Sse()
   memoryStreamChatPost(
-    @Body() body: { message: string; threadId?: string; },
+    @CurrentUser() user: AuthUser,
+    @Body() body: { message: string; threadId: string },
   ): Observable<MessageEvent> {
     const subject = new Subject<MessageEvent>();
-    this.memoryChatService.streamChat(body.message, subject, body.threadId);
+    this.memoryChatService.streamChat(
+      user.id,
+      body.message,
+      subject,
+      body.threadId,
+    );
     return subject.asObservable();
   }
-
 }

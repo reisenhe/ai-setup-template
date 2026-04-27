@@ -1,4 +1,5 @@
-import { StateGraph, END, MemorySaver, Annotation } from '@langchain/langgraph';
+import { Injectable } from '@nestjs/common';
+import { StateGraph, END, Annotation } from '@langchain/langgraph';
 import { ChatOpenAI } from '@langchain/openai';
 import {
   HumanMessage,
@@ -8,6 +9,7 @@ import {
   ToolMessage,
 } from '@langchain/core/messages';
 import { calcTools } from '../../tools/calc.tools';
+import { LanggraphCheckpointerService } from '../../checkpointer/langgraph-checkpointer.service';
 
 // ============================================================
 // 状态定义
@@ -49,7 +51,9 @@ function createLLM(streaming = true) {
 // 节点：决策者 - 判断题目类型并生成确认问句
 // ============================================================
 
-async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function deciderNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(false);
 
   const lastMessage = state.messages[state.messages.length - 1];
@@ -66,11 +70,17 @@ async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStat
 
   const response = await llm.invoke([new HumanMessage(classifyPrompt)]);
   const subjectRaw = (response.content as string).trim().toLowerCase();
-  const subject = ['math', 'english'].includes(subjectRaw) ? subjectRaw : 'other';
+  const subject = ['math', 'english'].includes(subjectRaw)
+    ? subjectRaw
+    : 'other';
 
   // 生成确认问句
   const subjectLabel =
-    subject === 'math' ? '数学题' : subject === 'english' ? '英语题' : '其他学科的题';
+    subject === 'math'
+      ? '数学题'
+      : subject === 'english'
+        ? '英语题'
+        : '其他学科的题';
   const confirmQuestion = `这是【${subjectLabel}】吗？`;
 
   return {
@@ -83,7 +93,9 @@ async function deciderNode(state: TeacherStateType): Promise<Partial<TeacherStat
 // 节点：数学老师 - 带计算工具
 // ============================================================
 
-async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function mathNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(true);
   const llmWithTools = llm.bindTools(calcTools);
 
@@ -110,7 +122,8 @@ async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateTy
         const result = await (matchedTool as any).invoke(toolCall.args);
         messages.push(
           new ToolMessage({
-            content: typeof result === 'string' ? result : JSON.stringify(result),
+            content:
+              typeof result === 'string' ? result : JSON.stringify(result),
             tool_call_id: toolCall.id!,
           }),
         );
@@ -129,7 +142,9 @@ async function mathNode(state: TeacherStateType): Promise<Partial<TeacherStateTy
 // 节点：英语老师 - 附带西海岸黑人口癖
 // ============================================================
 
-async function englishNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function englishNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(true);
 
   const systemPrompt = `You are an English teacher with a West Coast Black American vibe. 
@@ -155,7 +170,9 @@ async function englishNode(state: TeacherStateType): Promise<Partial<TeacherStat
 // 节点：热情的学校保安 - 东北大哥语气，直接回答非学科问题
 // ============================================================
 
-async function securityNode(state: TeacherStateType): Promise<Partial<TeacherStateType>> {
+async function securityNode(
+  state: TeacherStateType,
+): Promise<Partial<TeacherStateType>> {
   const llm = createLLM(true);
 
   const systemPrompt = `你是学校门口热情的东北保安大哥，人称"老李"。
@@ -190,45 +207,51 @@ function routeBySubject(state: TeacherStateType): string {
 }
 
 // ============================================================
-// 构建图
+// TeacherAgent - 对外暴露的 API 类（基于 DI 的 Postgres checkpointer）
 // ============================================================
 
-const memory = new MemorySaver();
-
-const workflow = new StateGraph(TeacherState)
-  .addNode('decider', deciderNode)
-  .addNode('math', mathNode)
-  .addNode('english', englishNode)
-  .addNode('security', securityNode)
-  .addEdge('__start__', 'decider')
-  .addConditionalEdges('decider', routeBySubject, {
-    math: 'math',
-    english: 'english',
-    security: 'security',
-  })
-  .addEdge('math', END)
-  .addEdge('english', END)
-  .addEdge('security', END);
-
-const compiledApp = workflow.compile({
-  checkpointer: memory,
-  interruptBefore: ['math', 'english'], // 仅数学和英语需要用户确认，保安直接回答
-});
-
-// ============================================================
-// TeacherAgent - 对外暴露的 API 类
-// ============================================================
-
+@Injectable()
 export class TeacherAgent {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private compiledApp!: any;
+
+  constructor(
+    private readonly checkpointerService: LanggraphCheckpointerService,
+  ) {}
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getApp(): any {
+    if (!this.compiledApp) {
+      const workflow = new StateGraph(TeacherState)
+        .addNode('decider', deciderNode)
+        .addNode('math', mathNode)
+        .addNode('english', englishNode)
+        .addNode('security', securityNode)
+        .addEdge('__start__', 'decider')
+        .addConditionalEdges('decider', routeBySubject, {
+          math: 'math',
+          english: 'english',
+          security: 'security',
+        })
+        .addEdge('math', END)
+        .addEdge('english', END)
+        .addEdge('security', END);
+
+      this.compiledApp = workflow.compile({
+        checkpointer: this.checkpointerService.getSaver(),
+        interruptBefore: ['math', 'english'], // 仅数学和英语需要用户确认，保安直接回答
+      });
+    }
+    return this.compiledApp;
+  }
+
   /**
    * 开始新的对话流 - 运行 decider，然后暂停等待确认
-   * @param message 用户消息
-   * @param threadId 会话 ID
    */
   async startStream(message: string, threadId: string) {
     const config = { configurable: { thread_id: threadId } };
 
-    return compiledApp.stream(
+    return this.getApp().stream(
       { messages: [new HumanMessage(message)] },
       { ...config, streamMode: 'messages' },
     );
@@ -236,46 +259,33 @@ export class TeacherAgent {
 
   /**
    * 恢复被中断的图执行（用户确认后）
-   * @param threadId 会话 ID
    */
   async resumeStream(threadId: string) {
     const config = { configurable: { thread_id: threadId } };
 
-    return compiledApp.stream(
-      null, // null 表示从中断点恢复，不追加新消息
-      { ...config, streamMode: 'messages' },
-    );
+    return this.getApp().stream(null, { ...config, streamMode: 'messages' });
   }
 
   /**
    * 取消当前中断，将学科重置为 'other' 并路由到保安节点回答
-   * @param threadId 会话 ID
    */
   async cancelToSecurity(threadId: string) {
     const config = { configurable: { thread_id: threadId } };
 
-    // 以 decider 节点身份更新状态，将 subject 改为 'other'
-    // 这会使条件路由重新评估并将 next 指向 security 节点
-    await compiledApp.updateState(config, { subject: 'other' }, 'decider');
+    await this.getApp().updateState(config, { subject: 'other' }, 'decider');
 
-    return compiledApp.stream(
-      null,
-      { ...config, streamMode: 'messages' },
-    );
+    return this.getApp().stream(null, { ...config, streamMode: 'messages' });
   }
 
   /**
    * 获取当前中断状态（subject 和 confirmQuestion）
-   * @param threadId 会话 ID
-   * @returns 如果图处于中断状态则返回状态值，否则返回 null
    */
   async getInterruptState(
     threadId: string,
   ): Promise<{ subject: string; confirmQuestion: string } | null> {
     const config = { configurable: { thread_id: threadId } };
-    const state = await compiledApp.getState(config);
+    const state = await this.getApp().getState(config);
 
-    // state.next 包含下一个待执行的节点列表，非空则说明图被中断了
     if (state.next && state.next.length > 0) {
       return {
         subject: state.values.subject as string,
@@ -285,7 +295,12 @@ export class TeacherAgent {
 
     return null;
   }
-}
 
-// 导出单例
-export const teacherAgent = new TeacherAgent();
+  /**
+   * 获取线程的完整状态（包含所有历史消息），用于前端回显
+   */
+  async getState(threadId: string) {
+    const config = { configurable: { thread_id: threadId } };
+    return this.getApp().getState(config);
+  }
+}

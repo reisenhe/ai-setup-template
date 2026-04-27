@@ -19,11 +19,12 @@ src/
 ├── api/                 # API 服务层
 │   ├── index.ts            # axios 实例和拦截器配置
 │   └── services/           # 按模块划分的 API 服务
-│       └── auth.service.ts # 认证相关接口
+│       ├── auth.service.ts     # 认证相关接口
+│       └── chat-thread.service.ts # 会话管理接口
 ├── assets/              # 静态资源
 │   └── vue.svg
 ├── components/          # Vue 组件
-│   ├── ChatInterface.vue   # 聊天界面组件
+│   ├── ChatInterface.vue   # 聊天界面组件（含会话侧边栏）
 │   ├── ConfirmDialog.vue   # 确认对话框组件
 │   └── Message.vue         # 消息组件
 ├── controllers/         # 控制器
@@ -125,15 +126,65 @@ const response = await register({
 
 ### 组件
 
-- **ChatInterface.vue** - 聊天界面，支持 SSE 实时消息
+- **ChatInterface.vue** - 聊天界面，支持 SSE 实时消息和会话管理
+  - 左侧会话侧边栏：切换 Agent 类型、新建/删除会话、点击切换历史会话
+  - 右侧聊天区：消息展示、输入框、发送按钮
+  - 自动加载历史消息并回显
 - **LoginView.vue** - 登录/注册页面
 - **ChatView.vue** - 聊天页面容器
 - **ConfirmDialog.vue** - 确认对话框组件
 - **Message.vue** - 消息展示组件
 
+### 会话管理
+
+应用支持多会话管理和历史消息加载：
+
+**会话侧边栏功能**：
+
+- ✅ Agent 类型切换（Memory Chat / Teacher）
+- ✅ 新建会话（自动选择最新会话或创建空会话）
+- ✅ 会话列表（显示标题、更新时间）
+- ✅ 点击切换会话（加载历史消息）
+- ✅ 删除会话（二次确认）
+
+**工作流程**：
+
+1. 页面加载时自动获取当前 Agent 类型的会话列表
+2. 自动选中最新会话，如果没有则创建空会话
+3. 点击切换会话时，调用 `/chat-threads/{id}/messages` 加载历史
+4. 发送新消息时，携带 `threadId`，后端自动关联到对应会话
+5. 首条消息发送后，自动更新会话标题
+
+**API 调用示例**：
+
+```typescript
+import {
+  listThreads,
+  createThread,
+  getThreadMessages,
+} from "./api/services/chat-thread.service";
+
+// 获取会话列表
+const threads = await listThreads("memory");
+
+// 创建新会话
+const newThread = await createThread({ agentType: "memory", title: "新会话" });
+
+// 获取历史消息
+const { messages } = await getThreadMessages(threadId);
+// messages: [{ role: "human", content: "..." }, { role: "ai", content: "..." }]
+```
+
 ### SSE 支持
 
 应用已集成 Server-Sent Events 支持，可通过 `sse.controller.ts` 与后端建立实时连接。所有 SSE 请求自动携带 JWT Token。
+
+**聊天 SSE 流程**：
+
+1. 用户输入消息，调用 `createEventStream(endpoint, body)`
+2. `endpoint` 根据当前 Agent 类型动态切换（`/chat/memory/stream` 或 `/teacher/stream`）
+3. `body` 携带 `{ message, threadId }`
+4. 后端流式返回响应，前端实时渲染 Markdown 内容
 
 ## 配置说明
 

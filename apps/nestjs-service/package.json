@@ -24,6 +24,7 @@
     "@langchain/community": "^1.1.23",
     "@langchain/core": "^1.1.32",
     "@langchain/langgraph": "^1.2.2",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.1",
     "@langchain/openai": "^1.2.13",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
