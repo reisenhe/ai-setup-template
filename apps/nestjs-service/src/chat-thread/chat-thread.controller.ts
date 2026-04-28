@@ -22,7 +22,7 @@ const AGENT_TYPES: AgentType[] = ['memory', 'teacher'];
 
 function normalizeAgentType(value?: string): AgentType {
   if (!value || !AGENT_TYPES.includes(value as AgentType)) {
-    throw new BadRequestException('agentType 必须是 memory 或 teacher');
+    throw new BadRequestException('agentType 必须是 memory / teacher');
   }
   return value as AgentType;
 }

@@ -9,6 +9,8 @@
 - [Express](https://expressjs.com/) - Web 应用框架
 - [Prisma](https://www.prisma.io/) - 下一代 ORM
 - [PostgreSQL](https://www.postgresql.org/) - 关系型数据库
+- [ioredis](https://github.com/redis/ioredis) - Redis 客户端
+- [Redis](https://redis.io/) - 内存数据库（用户缓存 + 短期对话记忆）
 - [Passport](http://www.passportjs.org/) - 认证中间件
 - [JWT](https://jwt.io/) - JSON Web Token 认证
 - [bcrypt](https://github.com/kelektiv/node.bcrypt.js) - 密码加密
@@ -44,6 +46,14 @@ src/
 ├── checkpointer/        # LangGraph 检查点模块
 │   ├── langgraph-checkpointer.module.ts  # 检查点模块（全局）
 │   └── langgraph-checkpointer.service.ts # PostgresSaver 服务
+├── common/               # 公共模块（请求上下文 + 日志中间件）
+│   ├── common.module.ts         # 全局 @Global() 模块
+│   ├── request-context.service.ts # AsyncLocalStorage 请求上下文
+│   └── request-logging.middleware.ts # HTTP 单行日志 + cacheHit
+├── redis/                # Redis 模块（全局单例）
+│   ├── redis.module.ts          # @Global() 模块
+│   ├── redis.service.ts         # ioredis 封装 + HIT/MISS 打点
+│   └── redis.constants.ts       # REDIS_CLIENT token + Key 工厂
 ├── langgraph-teacher/   # 教师模块
 │   ├── teacher.controller.ts # 教师控制器
 │   └── teacher.service.ts    # 教师服务
@@ -132,6 +142,88 @@ pnpm start:dev
 ```
 
 服务默认运行在 http://localhost:3000
+
+## Redis 配置与连通性验证
+
+项目使用 Redis 提供：
+
+1. 登录态用户信息缓存（key：`ai-setup:user:{id}`），减少鉴权时的 DB 查询。
+2. LangGraph Checkpointer 的旁路缓存（`ai-setup:ckpt:{threadId}:{ns}:{checkpointId}` 与 `...:latest`），PostgreSQL 仍是 source of truth。
+
+### 环境变量
+
+```env
+# Redis 开关，false 时整个 Redis 链路被旁路（用于压测对比）
+REDIS_ENABLED=true
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+# 所有 key 都会自动拼接这个前缀，多个环境共用一个 Redis 实例时避免撕 Key
+REDIS_KEY_PREFIX=ai-setup:
+```
+
+### 连通性验证
+
+```bash
+# 返回 { "enabled": true, "status": "PONG" } 即表示连通正常
+curl http://localhost:3000/health/redis
+```
+
+启动日志中应观察到 `[RedisService] connected to <host>:<port> (PONG)`。若 `REDIS_ENABLED=false`，则输出 `Redis 未启用 (REDIS_ENABLED=false)…`。
+
+### 请求日志与 cacheHit 打点
+
+项目穿通 `RequestLoggingMiddleware` + `AsyncLocalStorage`，每个 HTTP 请求结束时输出单行日志：
+
+```
+[HTTP] GET /chat-threads 200 12ms userId=1 cacheHit=HIT
+[HTTP] POST /auth/login 201 45ms userId=1 cacheHit=-
+```
+
+`cacheHit` 四态：
+
+- `HIT`：命中 Redis
+- `MISS`：未命中，回源 DB
+- `BYPASS`：`REDIS_ENABLED=false` 或本次请求未走 Redis
+- `ERROR`：Redis 异常，已降级
+
+推荐用法【autocannon 压测对比】：
+
+1. `REDIS_ENABLED=false` 启动，跑一轮 `autocannon` 压测，记录 QPS / P95。
+2. 改为 `REDIS_ENABLED=true` 重启，再跑一轮。
+3. 对比日志中 `cacheHit=HIT` 占比与 autocannon 指标。
+
+## 登录用户信息缓存
+
+登录 / 注册成功后，`AuthService` 会写入 `ai-setup:user:{id}`，TTL 与 `JWT_EXPIRES_IN` 对齐；`JwtStrategy.validate` 在鉴权时优先读 Redis，MISS 时回源 DB 并回写。语义摘要：
+
+- 缓存内容：`{ id, email, username }`（不包含密码等敏感字段）
+- 主动失效：`AuthService.invalidateUserCache(userId)`，预留给登出 / 资料变更
+- Redis 写入失败不阶级主流程，业务自动降级走 DB
+
+## LangGraph Checkpointer Redis 旁路缓存
+
+`LanggraphCheckpointerService` 使用自定义的 `RedisPostgresHybridCheckpointer`（继承 `PostgresSaver`）：
+
+- **读路径**：`getTuple` 先查 `ai-setup:ckpt:{threadId}:{ns}:latest` 取到 `checkpointId`，再读 `ai-setup:ckpt:{threadId}:{ns}:{checkpointId}`；未命中则回源 PG 并回填 Redis，TTL 1 小时。
+- **写路径**：`put` 先落 PG，再 `MULTI` 写入 tuple 与 latest 指针；`putWrites` 落 PG 后失效对应缓存。
+- **删除**：`deleteThread` 走父类删 PG，再用 `SCAN` 匹配 `ai-setup:ckpt:{threadId}:*` 分批删除，避免 `KEYS` 阻塞。
+- **序列化**：使用 `BaseCheckpointSaver.serde.dumpsTyped / loadsTyped`（含 BaseMessage 类型信息），以 base64 承载 JSON 字符串，外层有 `v:1` 版本字段，反序列化失败直接当 MISS 回源。
+
+### REDIS_ENABLED 降级
+
+`REDIS_ENABLED=false` 或 ioredis 未初始化时，Hybrid 中所有 Redis 分支直接走 `BYPASS`，请求日志 `cacheHit=BYPASS`，业务等价于纯 PostgresSaver。
+
+### autocannon 对比方法
+
+1. 准备好一个有多轮历史的 `threadId`（例如先用该账号走 `/chat/memory/stream` 对话 2 次）。
+2. `REDIS_ENABLED=false` 启动，autocannon 压 `/chat-threads/:id/messages` 或 `/chat/memory/stream`（冷热读路径）。
+3. 切换 `REDIS_ENABLED=true`，预热一次（MISS → 回填）后再压一轮。
+4. 对比：
+   - autocannon 产出的 QPS / P95
+   - 后端日志中 `cacheHit=HIT` 占比（grep / awk 单行日志）
+5. `redis-cli FLUSHDB` 后再压一轮，可以验证缓存仅起加速作用、数据仍完整（Postgres 源数据不丢）。
 
 ## 其他启动方式
 
@@ -227,7 +319,7 @@ Authorization: Bearer <access_token>
 - `GET /chat/dashscope/stream?message=xxx` - DashScope 聊天
 - `GET /chat/openai/stream?message=xxx` - OpenAI 聊天
 - `GET /chat/tool/stream?message=xxx` - 工具调用聊天
-- `GET /chat/memory/stream?message=xxx&threadId=xxx` - 记忆聊天（支持会话持久化）
+- `GET /chat/memory/stream?message=xxx&threadId=xxx` - 记忆聊天（支持会话持久化 + Redis 旁路缓存）
 
 ### 会话管理接口（需要 JWT 认证）
 
@@ -272,7 +364,7 @@ curl http://localhost:3000/chat-threads/{threadId}/messages \
 ### 其他接口
 
 - `GET /` - 根接口
-- `GET /health` - 健康检查
+- `GET /health/redis` - Redis 连通性健康检查
 
 ## 配置说明
 
@@ -280,8 +372,11 @@ curl http://localhost:3000/chat-threads/{threadId}/messages \
 
 - `DATABASE_URL` - PostgreSQL 数据库连接字符串
 - `JWT_SECRET` - JWT 签名密钥（生产环境务必修改）
-- `JWT_EXPIRES_IN` - JWT 过期时间（默认：7d）
+- `JWT_EXPIRES_IN` - JWT 过期时间（默认：7d，同时用作用户缓存的 TTL）
 - `DASHSCOPE_API_KEY` - DashScope API 密钥
+- `REDIS_ENABLED` - 是否启用 Redis（默认 true，false 时全线旁路）
+- `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` / `REDIS_DB` - Redis 连接参数
+- `REDIS_KEY_PREFIX` - 全局 Key 前缀（默认 `ai-setup:`）
 - `PORT` - 服务端口（默认：3000）
 
 ### JWT 认证

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatController } from './chat/chat.controller';
@@ -15,9 +15,14 @@ import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { LanggraphCheckpointerModule } from './checkpointer/langgraph-checkpointer.module';
 import { ChatThreadModule } from './chat-thread/chat-thread.module';
+import { CommonModule } from './common/common.module';
+import { RedisModule } from './redis/redis.module';
+import { RequestLoggingMiddleware } from './common/request-logging.middleware';
 
 @Module({
   imports: [
+    CommonModule,
+    RedisModule,
     PrismaModule,
     AuthModule,
     UserModule,
@@ -36,4 +41,8 @@ import { ChatThreadModule } from './chat-thread/chat-thread.module';
     TeacherAgent,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggingMiddleware).forRoutes('*');
+  }
+}

@@ -16,16 +16,19 @@ importers:
     dependencies:
       '@langchain/community':
         specifier: ^1.1.23
-        version: 1.1.23(@browserbasehq/sdk@2.8.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.3.1)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(zod@4.3.6))(@ibm-cloud/watsonx-ai@1.7.9)(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(ibm-cloud-sdk-core@5.4.9)(ignore@7.0.5)(jsonwebtoken@9.0.3)(lodash@4.17.23)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(pg@8.20.0)(playwright@1.58.2)(ws@8.19.0)
+        version: 1.1.23(@browserbasehq/sdk@2.8.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.3.1)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(zod@4.3.6))(@ibm-cloud/watsonx-ai@1.7.9)(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(ibm-cloud-sdk-core@5.4.9)(ignore@7.0.5)(ioredis@5.10.1)(jsonwebtoken@9.0.3)(lodash@4.17.23)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(pg@8.20.0)(playwright@1.58.2)(ws@8.19.0)
       '@langchain/core':
         specifier: ^1.1.32
         version: 1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       '@langchain/langgraph':
         specifier: ^1.2.2
         version: 1.2.2(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.27(typescript@5.9.3))(zod-to-json-schema@3.25.1(zod@4.3.6))(zod@4.3.6)
+      '@langchain/langgraph-checkpoint':
+        specifier: ^1.0.1
+        version: 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.1
-        version: 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(@langchain/langgraph-checkpoint@1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)))
+        version: 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(@langchain/langgraph-checkpoint@1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)))
       '@langchain/openai':
         specifier: ^1.2.13
         version: 1.2.13(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(ws@8.19.0)
@@ -59,6 +62,9 @@ importers:
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
+      ioredis:
+        specifier: ^5.10.1
+        version: 5.10.1
       langchain:
         specifier: ^1.2.32
         version: 1.2.32(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.27(typescript@5.9.3))(ws@8.19.0)(zod-to-json-schema@3.25.1(zod@4.3.6))
@@ -74,6 +80,9 @@ importers:
       passport-local:
         specifier: ^1.0.0
         version: 1.0.0
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -108,6 +117,9 @@ importers:
       '@types/node':
         specifier: ^22.10.7
         version: 22.19.7
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
@@ -804,6 +816,9 @@ packages:
       '@types/node':
         optional: true
 
+  '@ioredis/commands@1.5.1':
+    resolution: {integrity: sha512-JH8ZL/ywcJyR9MmJ5BNqZllXNZQqQbnVZOqpPQqE1vHiFgAw4NHbvE0FOduNU8IX9babitBT46571OnPTT0Zcw==}
+
   '@isaacs/balanced-match@4.0.1':
     resolution: {integrity: sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ==}
     engines: {node: 20 || >=22}
@@ -1323,8 +1338,8 @@ packages:
       '@langchain/core': ^1.0.1
       '@langchain/langgraph-checkpoint': ^1.0.0
 
-  '@langchain/langgraph-checkpoint@1.0.0':
-    resolution: {integrity: sha512-xrclBGvNCXDmi0Nz28t3vjpxSH6UYx6w5XAXSiiB1WEdc2xD2iY/a913I3x3a31XpInUW/GGfXXfePfaghV54A==}
+  '@langchain/langgraph-checkpoint@1.0.1':
+    resolution: {integrity: sha512-HM0cJLRpIsSlWBQ/xuDC67l52SqZ62Bh2Y61DX+Xorqwoh5e1KxYvfCD7GnSTbWWhjBOutvnR0vPhu4orFkZfw==}
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': ^1.0.1
@@ -2499,6 +2514,10 @@ packages:
     resolution: {integrity: sha512-JQHZ2QMW6l3aH/j6xCqQThY/9OH4D/9ls34cgkUBiEeocRTU04tHfKPBsUK1PqZCUQM7GiA0IIXJSuXHI64Kbg==}
     engines: {node: '>=0.8'}
 
+  cluster-key-slot@1.1.2:
+    resolution: {integrity: sha512-RMr0FhtfXemyinomL4hrWcYJxmX6deFdCxpJzhDttxgO1+bcCnkk+9drydLVDmAMG7NE6aN/fl4F7ucU/90gAA==}
+    engines: {node: '>=0.10.0'}
+
   co@4.6.0:
     resolution: {integrity: sha512-QVb0dM5HvG+uaxitm8wONl7jltx8dqhfU33DcqtOZcLSVIKSDDLDi7+0LbAKiyI8hD9u42m2YxXSkMGWThaecQ==}
     engines: {iojs: '>= 1.0.0', node: '>= 0.12.0'}
@@ -3178,6 +3197,10 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
+  ioredis@5.10.1:
+    resolution: {integrity: sha512-HuEDBTI70aYdx1v6U97SbNx9F1+svQKBDo30o0b9fw055LMepzpOOd0Ccg9Q6tbqmBSJaMuY0fB7yw9/vjBYCA==}
+    engines: {node: '>=12.22.0'}
+
   ipaddr.js@1.9.1:
     resolution: {integrity: sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==}
     engines: {node: '>= 0.10'}
@@ -3514,8 +3537,14 @@ packages:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
 
+  lodash.defaults@4.2.0:
+    resolution: {integrity: sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ==}
+
   lodash.includes@4.3.0:
     resolution: {integrity: sha512-W3Bx6mdkRTGtlJISOvVD/lbqjTlPPUDTMnlXZFnVwi9NKJ6tiAk6LVdlhZMm17VZisqhKcgzpO5Wz91PCt5b0w==}
+
+  lodash.isarguments@3.1.0:
+    resolution: {integrity: sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg==}
 
   lodash.isboolean@3.0.3:
     resolution: {integrity: sha512-Bz5mupy2SVbPHURB98VAcw+aHh4vRV5IPNhILUCsOzRmsTmSQ17jIuqopAentWoehktxGd9e/hbIXq980/1QJg==}
@@ -4114,6 +4143,14 @@ packages:
     resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
     engines: {node: '>= 20.19.0'}
 
+  redis-errors@1.2.0:
+    resolution: {integrity: sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==}
+    engines: {node: '>=4'}
+
+  redis-parser@3.0.0:
+    resolution: {integrity: sha512-DJnGAeenTdpMEH6uAJRK/uiyEIH9WVsUmoLwzudwGJUwZPp80PDBWPHXSAGNPwNvIXAbe7MSUB1zQFugFml66A==}
+    engines: {node: '>=4'}
+
   reflect-metadata@0.2.2:
     resolution: {integrity: sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q==}
 
@@ -4289,6 +4326,9 @@ packages:
   stack-utils@2.0.6:
     resolution: {integrity: sha512-XlkWvfIm6RmsWtNJx+uqtKLS8eqFbxUg0ZzLXqY0caEy9l7hruX8IpiDnjsLavoBgqCCR71TqWO8MaXYheJ3RQ==}
     engines: {node: '>=10'}
+
+  standard-as-callback@2.1.0:
+    resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
 
   statuses@2.0.2:
     resolution: {integrity: sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw==}
@@ -5443,6 +5483,8 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.19.7
 
+  '@ioredis/commands@1.5.1': {}
+
   '@isaacs/balanced-match@4.0.1': {}
 
   '@isaacs/brace-expansion@5.0.0':
@@ -5700,7 +5742,7 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/community@1.1.23(@browserbasehq/sdk@2.8.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.3.1)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(zod@4.3.6))(@ibm-cloud/watsonx-ai@1.7.9)(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(ibm-cloud-sdk-core@5.4.9)(ignore@7.0.5)(jsonwebtoken@9.0.3)(lodash@4.17.23)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(pg@8.20.0)(playwright@1.58.2)(ws@8.19.0)':
+  '@langchain/community@1.1.23(@browserbasehq/sdk@2.8.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.3.1)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(zod@4.3.6))(@ibm-cloud/watsonx-ai@1.7.9)(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(ibm-cloud-sdk-core@5.4.9)(ignore@7.0.5)(ioredis@5.10.1)(jsonwebtoken@9.0.3)(lodash@4.17.23)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(pg@8.20.0)(playwright@1.58.2)(ws@8.19.0)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.58.2)(deepmerge@4.3.1)(dotenv@17.3.1)(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(zod@4.3.6)
       '@ibm-cloud/watsonx-ai': 1.7.9
@@ -5719,6 +5761,7 @@ snapshots:
     optionalDependencies:
       '@browserbasehq/sdk': 2.8.0
       ignore: 7.0.5
+      ioredis: 5.10.1
       jsonwebtoken: 9.0.3
       lodash: 4.17.23
       pg: 8.20.0
@@ -5750,15 +5793,15 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/langgraph-checkpoint-postgres@1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(@langchain/langgraph-checkpoint@1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)))':
+  '@langchain/langgraph-checkpoint-postgres@1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(@langchain/langgraph-checkpoint@1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)))':
     dependencies:
       '@langchain/core': 1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
-      '@langchain/langgraph-checkpoint': 1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
+      '@langchain/langgraph-checkpoint': 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
       pg: 8.20.0
     transitivePeerDependencies:
       - pg-native
 
-  '@langchain/langgraph-checkpoint@1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))':
+  '@langchain/langgraph-checkpoint@1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))':
     dependencies:
       '@langchain/core': 1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       uuid: 10.0.0
@@ -5778,7 +5821,7 @@ snapshots:
   '@langchain/langgraph@1.2.2(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.27(typescript@5.9.3))(zod-to-json-schema@3.25.1(zod@4.3.6))(zod@4.3.6)':
     dependencies:
       '@langchain/core': 1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
-      '@langchain/langgraph-checkpoint': 1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
+      '@langchain/langgraph-checkpoint': 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
       '@langchain/langgraph-sdk': 1.7.2(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.27(typescript@5.9.3))
       '@standard-schema/spec': 1.1.0
       uuid: 10.0.0
@@ -7001,6 +7044,8 @@ snapshots:
 
   clone@1.0.4: {}
 
+  cluster-key-slot@1.1.2: {}
+
   co@4.6.0: {}
 
   collect-v8-coverage@1.0.3: {}
@@ -7109,8 +7154,7 @@ snapshots:
 
   delayed-stream@1.0.0: {}
 
-  denque@2.1.0:
-    optional: true
+  denque@2.1.0: {}
 
   depd@2.0.0: {}
 
@@ -7721,6 +7765,20 @@ snapshots:
 
   inherits@2.0.4: {}
 
+  ioredis@5.10.1:
+    dependencies:
+      '@ioredis/commands': 1.5.1
+      cluster-key-slot: 1.1.2
+      debug: 4.4.3
+      denque: 2.1.0
+      lodash.defaults: 4.2.0
+      lodash.isarguments: 3.1.0
+      redis-errors: 1.2.0
+      redis-parser: 3.0.0
+      standard-as-callback: 2.1.0
+    transitivePeerDependencies:
+      - supports-color
+
   ipaddr.js@1.9.1: {}
 
   is-arrayish@0.2.1: {}
@@ -8185,7 +8243,7 @@ snapshots:
     dependencies:
       '@langchain/core': 1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       '@langchain/langgraph': 1.2.2(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(vue@3.5.27(typescript@5.9.3))(zod-to-json-schema@3.25.1(zod@4.3.6))(zod@4.3.6)
-      '@langchain/langgraph-checkpoint': 1.0.0(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
+      '@langchain/langgraph-checkpoint': 1.0.1(@langchain/core@1.1.32(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0))
       langsmith: 0.5.10(openai@6.27.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       uuid: 11.1.0
       zod: 4.3.6
@@ -8239,7 +8297,11 @@ snapshots:
     dependencies:
       p-locate: 5.0.0
 
+  lodash.defaults@4.2.0: {}
+
   lodash.includes@4.3.0: {}
+
+  lodash.isarguments@3.1.0: {}
 
   lodash.isboolean@3.0.3: {}
 
@@ -8776,6 +8838,12 @@ snapshots:
   readdirp@5.0.0:
     optional: true
 
+  redis-errors@1.2.0: {}
+
+  redis-parser@3.0.0:
+    dependencies:
+      redis-errors: 1.2.0
+
   reflect-metadata@0.2.2: {}
 
   remeda@2.33.4:
@@ -8984,6 +9052,8 @@ snapshots:
   stack-utils@2.0.6:
     dependencies:
       escape-string-regexp: 2.0.0
+
+  standard-as-callback@2.1.0: {}
 
   statuses@2.0.2: {}
 
